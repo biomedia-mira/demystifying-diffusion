@@ -1,0 +1,105 @@
+\documentclass{article}
+\usepackage[english]{babel}
+\usepackage[a4paper,margin=1in,top=3cm]{geometry}
+\usepackage[bookmarks,psdextra]{hyperref}
+% \newcommand\pdfmath[1]{\texorpdfstring{$#1$}{#1}}
+\usepackage{xcolor}
+\definecolor{orange}{HTML}{ff7f0e}
+\definecolor{blue}{HTML}{1f77b4}
+\hypersetup{
+  colorlinks,
+  linkcolor={red!50!black},
+  citecolor={blue!50!black},
+  % urlcolor={blue!80!black}
+  urlcolor={black}
+  }
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathtools}
+\usepackage{nicefrac}
+\usepackage{enumerate}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{subcaption}
+\usepackage{authblk}
+\usepackage{cancel}
+\let\olddiv\div
+\usepackage{physics}
+\usepackage{wrapfig}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[R]{\thepage}
+\fancyhead[L]{\rightmark}
+\renewcommand{\sectionmark}[1]{\markright{\thesection\ #1}}
+% \renewcommand{\subsectionmark}[1]{\markright{#1}}
+\renewcommand{\subsectionmark}[1]{\markright{\thesubsection\ #1}}
+% \numberwithin{equation}{subsection}
+
+\makeatletter
+\newcommand{\customtag}[1]{%
+  \refstepcounter{equation} 
+  \tag*{(#1) (\theequation)}
+}
+
+\newcommand{\customlabel}[1]{%
+  \edef\@currentlabel{\theequation}%
+  \ltx@label{#1}
+}
+\makeatother
+
+\onehalfspacing
+\allowdisplaybreaks
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{5.5pt}
+
+\newcommand\ci{\perp\!\!\!\perp}
+% \newcommand*{\dd}{\mathop{\diffdchar\!}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator*{\argmax}{arg\,max}
+
+\usepackage{tikz}
+\usetikzlibrary{bayesnet, calc, arrows.meta, bending}
+\usetikzlibrary{decorations.pathreplacing,angles,quotes,shapes.multipart, calligraphy}
+
+\title{Demystifying Variational Diffusion Models\vspace*{1cm}}
+
+\author[1]{\textbf{Fabio De Sousa Ribeiro}}
+\author[1]{\textbf{Ben Glocker}}
+\affil[1]{Department of Computing, Imperial College London, UK \authorcr {\small \texttt{\{fdesousa,b.glocker\}@imperial.ac.uk}
+}}
+
+\date{\normalsize \today}
+
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\begin{abstract}
+    Despite the growing popularity of diffusion models, gaining a deep understanding of the model class remains somewhat elusive for the uninitiated in non-equilibrium statistical physics. With that in mind, we present what we believe is a more straightforward introduction to diffusion models using directed graphical modelling and variational Bayesian principles, which imposes relatively fewer prerequisites on the average reader. Our exposition constitutes a comprehensive technical review spanning from foundational concepts like deep latent variable models to recent advances in continuous-time diffusion-based modelling, highlighting theoretical connections between model classes along the way. We provide additional mathematical insights that were omitted in the seminal works whenever possible to aid in understanding, while avoiding the introduction of new notation. We envision this article serving as a useful educational supplement for both researchers and practitioners in the area, and we welcome feedback and contributions from the community.\footnote{\url{https://github.com/biomedia-mira/demystifying-diffusion}}
+\end{abstract}
+
+\newpage
+{\hypersetup{hidelinks}
+\tableofcontents
+}
+
+\newpage
+\input{sections/0_notation}
+\newpage
+\input{sections/1_intro}
+\input{sections/2_vdm}
+\input{sections/2.2_discrete}
+\input{sections/2.3_continuous}
+\input{sections/2.4_vdm2}
+\input{sections/3_discussion}
+\paragraph{Acknowledgements.} We would like to thank Charles Jones, Rajat Rasal and Avinash Kori for fruitful discussions and valuable feedback. The authors are supported with funding from the ERC under the EU’s Horizon 2020 research and innovation programme (Project MIRA, grant No. 757173).
+
+\bibliographystyle{apalike}
+\bibliography{bibfile}
+
+\end{document}

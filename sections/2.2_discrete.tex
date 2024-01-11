@@ -1,0 +1,475 @@
+\newpage
+\subsection{Reverse Process: Discrete-Time Generative Model}
+\label{subsec: Discrete-time Generative Model}
+%
+The generative model in diffusion models inverts the Gaussian diffusion process outlined in Section~\ref{subsec: Gaussian Diffusion Process: Forward Time}. In other words, it estimates the \textit{reverse-time} variational Markov Chain relative to a corresponding \textit{forward-time} diffusion process. An interesting aspect of VDMs is that they admit continuous-time generative models ($T \to \infty$) in a principled manner, and these correspond to the infinitely deep limit of a hierarchical VAE with a fixed encoder. We describe the discrete-time model for finite $T$ first -- since it is more closely linked to the material we have already covered -- and describe the continuous-time version thereafter. 
+
+\paragraph{Notation.} To unify the notation for both the discrete and continuous-time model versions, \cite{kingma2021variational} uniformly discretize time into $T$ segments of width $\tau = 1/T$. Each time segment corresponds to a level/step in the hierarchy of latent variables defined as follows: 
+%
+\begin{align}
+    && t(i) = \frac{i}{T}, && s(i) = \frac{i-1}{T}, &&
+\end{align}
+%
+where $s(i)$ precedes $t(i)$ in the timestep hierarchy, for an index $i$. For simplicity, we may sometimes use $s$ and $t$ as shorthand notation for $s(i)$ and $t(i)$ when our intentions are clear from context. 
+
+As previously mentioned, the discrete-time generative model of a variational diffusion model is identical to the hierarchical VAE's generative model described in Section~\ref{subsec: Hierarchical VAE}. Using the new index notation defined above, we can re-express the discrete-time generative model as:
+%
+\begin{align}
+    p(\mathbf{x}, \mathbf{z}_{0:1}) & = p(\mathbf{z}_1)p(\mathbf{z}_{(T-1)/T} \mid \mathbf{z}_T)
+    p(\mathbf{z}_{(T-2)/T} \mid \mathbf{z}_{(T-1)/T})
+    \cdots p(\mathbf{z}_0 \mid \mathbf{z}_{1/T})p(\mathbf{x} \mid \mathbf{z}_0) \\[5pt]& = \underbrace{p(\mathbf{z}_1)}_{\mathrm{prior}} \underbrace{p(\mathbf{x} \mid \mathbf{z}_0)}_{\mathrm{likelihood}} \prod_{i=1}^T \underbrace{p(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)})}_{\mathrm{transitions}}.
+\end{align}
+%
+This corresponds to a Markov chain: $\mathbf{z}_1 \to \mathbf{z}_{(T-1)/T} \to \mathbf{z}_{(T-2)/T} \to \cdots \to \mathbf{z}_0 \to \mathbf{x}$, which is equivalent in principle to the hierarchical VAE's Markov chain: $\mathbf{z}_T \to \mathbf{z}_{T-1} \to \cdots \to \mathbf{z}_1 \to \mathbf{x}$, for equal $T$.
+
+Each component of the discrete-time generative model is defined as follows:
+%
+\begin{enumerate}[(i)]
+    \item The \textbf{prior} term can be safely set to $p(\mathbf{z}_1) = \mathcal{N}\left(0, \mathbf{I}\right)$ in a variance preserving diffusion process since -- for small enough $\mathrm{SNR}(t=1)$ -- the noisiest latent $\mathbf{z}_1$ holds almost no information about the input $\mathbf{x}$. In other words, this means that $q(\mathbf{z}_1 \mid \mathbf{x}) \approx \mathcal{N}\left(\mathbf{z}_1; 0, \mathbf{I}\right)$ by construction, and as such there exists a distribution $p(\mathbf{z}_1)$ such that $D_{\mathrm{KL}}\left(q(\mathbf{z}_1 \mid \mathbf{x}) \parallel p(\mathbf{z}_1) \right) \approx 0$.
+    \item The \textbf{likelihood} term $p(\mathbf{x} \mid \mathbf{z}_0)$ factorizes over the number of elements $D$ (e.g. pixels) in $\mathbf{x}$, $\mathbf{z}_0$ as:
+    \begin{align}
+        p(\mathbf{x} \mid \mathbf{z}_0) = \prod_{i=1}^D p({x}^{(i)} \mid {z}_0^{(i)}),
+    \end{align}
+    such as a product of (potentially discretized) Gaussian distributions. This distribution could conceivably be modelled autoregressively, but there is little advantage in doing so, as $\mathbf{z}_0$ (the least noisy latent) is almost identical to $\mathbf{x}$ by construction. This means that $p(\mathbf{x} \mid \mathbf{z}_0) \approx q(\mathbf{x} \mid \mathbf{z}_0)$ for sufficiently large $\mathrm{SNR}(t=0)$. Intuitively, since $\mathbf{z}_0$ is almost equal to $\mathbf{x}$ by construction, modelling $p(\mathbf{z}_0)$ is practically equivalent to modelling $p(\mathbf{x})$, so the likelihood term $p(\mathbf{x} \mid \mathbf{z}_0)$ is typically omitted, as learning $p(\mathbf{z}_0 \mid \mathbf{z}_{1/T})$ has proven to be sufficient in practice. 
+    \newpage
+    \item The \textbf{transition} conditional distributions $p(\mathbf{z}_s \mid \mathbf{z}_t)$ are defined to be the same as the top-down posteriors $q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x})$ presented in Section~\ref{subsubsec: qzs}, but with the observed data $\mathbf{x}$ replaced by the output of a time-dependent \textit{denoising} model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$, that is:
+    %
+    \begin{align}
+        p(\mathbf{z}_s \mid \mathbf{z}_t) = q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x} = \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)).    
+    \end{align}
+    %
+    The role of the denoising model is to predict $\mathbf{x}$ from each of its noisy versions $\mathbf{z}_t$ in turn. There are three different interpretations of this component of the generative model, as we describe next.
+\end{enumerate}
+%
+\begin{table}[!t]
+    \centering
+    \begin{tabular}{lcccc}
+        \toprule
+        & Image Denoising & Noise Prediction & Score-based & Energy-based \\
+        Model & $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $E_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ 
+        \\[2pt]
+        \midrule
+        \\[-8pt]
+        $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t)$ & \scalebox{1.05}{$\frac{\alpha_{t|s}\sigma_s^2\mathbf{z}_t}{\sigma^2_{t}} + \frac{\alpha_s \sigma^2_{t|s}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\sigma_{t}^2}$} & \scalebox{1.05}{$\frac{\alpha_{t|s}}{\mathbf{z}_t} - \frac{\sigma^2_{t|s} \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}\sigma_{t}}$} & \scalebox{1.05}{$\frac{\alpha_{t|s}}{\mathbf{z}_t} + \frac{\sigma^2_{t|s}\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}}$} & \scalebox{1.05}{$\frac{\alpha_{t|s}}{\mathbf{z}_t} - \frac{\sigma^2_{t|s}\nabla_{\mathbf{z}_t} E_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}}$} \\[5pt]
+        \bottomrule
+    \end{tabular}
+    \caption{Four ways of parameterizing a diffusion-based generative model (ref. Section~\ref{subsubsec: Deriving p}), where $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t)$ is our estimate of the true mean $\boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t)$ of the tractable top-down posterior $q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x})$.}
+    \label{tab: equiv_param2}
+\end{table}
+%
+\subsubsection{Generative Transitions: $p(\mathbf{z}_s \mid \mathbf{z}_t)$}
+\label{subsubsec: Deriving p}
+%
+The conditional distributions of the generative model are given by:
+%
+\begin{align}
+    p(\mathbf{z}_s \mid \mathbf{z}_t) = 
+    \mathcal{N}\left(\mathbf{z}_s; \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t; s, t), \sigma_Q^2(s,t)\mathbf{I} \right)
+\end{align}
+%
+where $\sigma_Q^2(s,t)$ is the posterior variance we derived in Equation~\ref{eq: post_var}, and $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t; s, t)$ is analogous to the posterior mean we derived in Equation~\ref{eq: post_mu}, that is: 
+%
+\begin{align}
+    q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x}) = \mathcal{N} \left(\mathbf{z}_s;\boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t), \sigma^2_Q(s,t) \mathbf{I}\right),
+\end{align}
+%
+where the posterior mean is given by
+%
+\begin{align}
+    \boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t) = \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\mathbf{x}.
+\end{align}
+%
+The crucial difference between $\boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t)$ and $\boldsymbol{\mu}_\theta(\mathbf{z}_t; s, t)$ is that, in the latter, the observed data $\mathbf{x}$ is replaced by our predictive model with parameters $\boldsymbol{\theta}$. There are four main (equivalently valid) ways of operationalizing this model as summarized in Table~\ref{tab: equiv_param} and derived in detail below:
+%r
+\begin{enumerate}[(i)]
+    \item A \textbf{denoising} model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$:
+    %
+    \begin{align}
+        \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) = \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t),
+    \end{align}
+    %
+    which as mentioned earlier, simply predicts $\mathbf{x}$ from its noisy versions $\mathbf{z}_t$, i.e. performs \textit{denoising}. 
+    %
+    \item A \textbf{noise prediction} model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$:
+    %
+    \begin{align}
+        \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) = \frac{1}{\alpha_{t|s}}\mathbf{z}_t - \frac{\sigma^2_{t|s} }{\alpha_{t|s}\sigma_{t}}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t),
+    \end{align}
+    %
+    which we can derive in detail starting from the denoising model:
+    %
+    \begin{align}
+        \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) &= \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)
+        \\[5pt] &= \frac{\alpha_{t|s}\sigma_s^2\mathbf{z}_t}{\sigma_t^2} + \frac{\alpha_s \sigma^2_{t|s}\left(\frac{\mathbf{z}_t - \sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t}\right)}{\sigma_{t}^2} 
+        \customtag{since $\mathbf{x}_t = (\mathbf{z}_t - \sigma_t \boldsymbol{\epsilon}_t) / \alpha_t$}
+        \\[5pt] &= \frac{\alpha_{t|s}}{\alpha_{t|s}} \cdot \frac{\alpha_{t|s}\sigma_s^2\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}\mathbf{z}_t}{\alpha_t}-\frac{\alpha_s \sigma^2_{t|s}\sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t}}{\sigma_{t}^2} 
+        \customtag{recall that $\alpha_{t|s} = \frac{\alpha_t}{\alpha_s}$}
+        \\[5pt] &= \frac{\frac{\alpha_t}{\alpha_s}\Big(\alpha_{t|s}\sigma_s^2\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}\mathbf{z}_t}{\alpha_t}-\frac{\alpha_s \sigma^2_{t|s}\sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t}\Big)}{\alpha_{t|s}\sigma_{t}^2} 
+        \customtag{cancel common factors}
+        \\[5pt] &= \frac{\alpha_{t|s}^2\sigma_s^2\mathbf{z}_t + \sigma^2_{t|s}\mathbf{z}_t - \sigma^2_{t|s}\sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}\sigma_{t}^2}
+        \\[5pt] &= \frac{\mathbf{z}_t\left(\sigma_{t|s}^2 + \alpha_{t|s}^2\sigma_s^2\right)}{\alpha_{t|s}\sigma_{t}^2} - \frac{\sigma^2_{t|s}\sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}\sigma_{t}^2} 
+        \customtag{combine like terms}
+        \\[5pt] &= \frac{\mathbf{z}_t\left(\sigma_{t}^2 - \alpha_{t|s}^2\sigma_s^2 + \alpha_{t|s}^2\sigma_s^2\right)}{\alpha_{t|s}\sigma_{t}^2} - \frac{\sigma^2_{t|s}\sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}\sigma_{t}^2}
+        \customtag{recall that $\sigma_{t|s}^2 = \sigma_t^2 - \alpha_{t|s}^2\sigma_s^2$}
+        \\[5pt] &= \frac{\mathbf{z}_t\sigma_{t}^2}{\alpha_{t|s}\sigma_{t}^2} - \frac{\sigma^2_{t|s} \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_{t|s}\sigma_{t}} 
+        \\[5pt] &= \frac{1}{\alpha_{t|s}}\mathbf{z}_t - \frac{\sigma^2_{t|s}}{\alpha_{t|s}\sigma_{t}}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t).
+    \end{align}
+    %
+    \item A \textbf{score} model $\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$:
+    %
+    \begin{align}
+        \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) = \frac{1}{\alpha_{t|s}}\mathbf{z}_t + \frac{\sigma^2_{t|s}}{\alpha_{t|s}}\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t),
+        \label{eq: score_net_mu}
+    \end{align}
+    %
+    which approximates $\nabla_{\mathbf{z}_t} \log q(\mathbf{z}_t)$, and is closely related to noise-prediction in the following way:
+    \begin{align}
+        \mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) & \approx \nabla_{\mathbf{z}_t} \log q(\mathbf{z}_t) \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[\nabla_{\mathbf{z}_t} \log q(\mathbf{z}_t \mid \mathbf{x})\right] 
+        \customtag{marginal of the data $q(\mathbf{x})$}
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[\nabla_{\mathbf{z}_t} \log \mathcal{N}\left(\mathbf{z}_t;\alpha_{t} \mathbf{x}, \sigma^2_{t} \mathbf{I}\right)\right]
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[\nabla_{\mathbf{z}_t} \log \left( \prod_{i=1}^D \frac{1}{\sigma_t \sqrt{2\pi} } \exp\left\{-\frac{1}{2\sigma_t^2}\left(\mathbf{z}_{t,i} - \alpha_t \mathbf{x}_i\right)^2\right\} \right)\right] 
+        \customtag{isotropic covariance}
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[\nabla_{\mathbf{z}_t} \left(-\frac{D}{2}\log \left(2\pi\sigma^2_t\right) -\frac{1}{2\sigma_t^2}\sum_{i=1}^D\left(\mathbf{z}_{t,i} - \alpha_t \mathbf{x}_i\right)^2 \right)\right]
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[-\frac{1}{\sigma_t^2} \left(\mathbf{z}_{t} - \alpha_t \mathbf{x}\right)\right] 
+        \customtag{expected gradient}
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[-\frac{1}{\sigma_t} \frac{\mathbf{z}_{t} - \alpha_t \mathbf{x}}{\sigma_t}\right]
+        \\[5pt] & = \mathbb{E}_{q(\mathbf{x})}\left[-\frac{1}{\sigma_t} \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right] 
+        \customtag{due to $\boldsymbol{\epsilon} = (\mathbf{z}_t - \alpha_t \mathbf{x}) / \sigma_t$}
+        \\[5pt] & = -\frac{1}{\sigma_t} \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t).
+    \end{align}
+    %   
+    The optimal score model (with parameters $\boldsymbol{\theta}^*$) is equal to the gradient of the log-probability density w.r.t. the data at each noise scale, i.e. we have that: $\mathbf{s}_{\boldsymbol{\theta}^{*}}(\mathbf{z}_t;t) = \nabla_{\mathbf{z}_t}\log q(\mathbf{z}_t)$, for any $t$. This stems from a Score Matching with Langevin Dynamics (SMLD) perspective on generative modelling~\citep{song2019generative,song2021scorebased}. SMLD is closely related to probabilistic diffusion models~\citep{ho2020denoising}. For continuous state spaces, diffusion models implicitly compute the score at each noise scale, so the two approaches can be categorized jointly as \textit{Score-based Generative Models} or \textit{Gaussian Diffusion Processes}. For a more detailed discussion on score-based generative modelling the reader may refer to \cite{song2021scorebased}.
+    \item An \textbf{energy-based} model $E_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$:
+    %
+    \begin{align}
+        \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) = \frac{1}{\alpha_{t|s}}\mathbf{z}_t - \frac{\sigma^2_{t|s}}{\alpha_{t|s}}\nabla_{\mathbf{z}_t} E_{\boldsymbol{\theta}}(\mathbf{z}_t;t),
+        \label{eq: energy_net_mu}
+    \end{align}
+    %
+    since the score model can be parameterized with the gradient of an energy-based model:
+    %
+    \begin{align}
+        \mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) & \approx \nabla_{\mathbf{z}_t} \log q(\mathbf{z}_t) 
+        \\[5pt] & = \nabla_{\mathbf{z}_t} \log \left(\frac{1}{Z}\exp\left(-E_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right) \right) 
+        \customtag{Boltzmann distribution}
+        \\[5pt] & = \nabla_{\mathbf{z}_t} \Big(-E_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \log Z \Big) \customtag{$\nabla_{\mathbf{z}_t} \log Z = 0$}
+        \\[5pt] & = -\nabla_{\mathbf{z}_t} E_{\boldsymbol{\theta}}(\mathbf{z}_t;t),
+    \end{align}
+    %
+    which we can use to substitute $\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ in Equation~\ref{eq: score_net_mu} to get the new expression in Equation~\ref{eq: energy_net_mu}. For a detailed review of energy-based models and their relationship with score-based generative models refer to e.g.~\cite{song2021train} and \cite{salimans2021should}.
+\end{enumerate}
+%
+\begin{table}[!t]
+    \centering
+    \begin{tabular}{cccc}
+        \toprule
+        & Image Denoising & Noise Prediction & Score-based \\
+        Parameterization & $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & ${\mathbf{s}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$  
+        \\[2pt]
+        \midrule 
+        \\[-10pt]
+        $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & - & $(\mathbf{z}_t - \sigma_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)) / \alpha_t$ & $(\mathbf{z}_t + \sigma^2_t\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)) / \alpha_t$  
+        \\[5pt]
+        $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $(\mathbf{z}_t - \alpha_t\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)) / \sigma_t$ & - & $-\sigma_t{\mathbf{s}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$  
+        \\[5pt]
+
+        ${\mathbf{s}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ & $(\alpha_t\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{z}_t) / \sigma^2_t$ & $-\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)) / \sigma_t$ & -  
+        \\[5pt]
+        \bottomrule
+    \end{tabular}
+    \caption{Translating between the three main equivalently valid ways to parameterize a diffusion model. All the operations are linear because $\mathbf{z}_t = \alpha_t\mathbf{x} + \sigma_t\boldsymbol{\epsilon}_t$ by the definition of the forward diffusion process.}
+    \label{tab: equiv_param}
+\end{table}
+%
+% In summary, all four interpretations above are equally valid and can/have been applied interchangeably. With that said, the noise prediction version seems to perform best in practice~\citep{ho2020denoising}.
+
+Two other notable parameterizations not elaborated upon in this article but certainly worth learning about include $\mathbf{v}$-prediction \citep{salimans2022progressive}, and $\mathbf{F}$-prediction~\citep{karras2022elucidating}. There are also interesting links to Flow Matching~\citep{lipman2023flow}, specifically with the Optimal Transport (OT) flow path, which can be interpreted as a type of Gaussian diffusion.~\cite{kingma2023understanding} formalize this relation under what they call the $\mathbf{o}$-prediction parameterization -- for further details on this and more the reader may refer to appendix D.3 in~\cite{kingma2023understanding}.
+%
+\newpage
+\paragraph{Simplifying $p(\mathbf{z}_s \mid \mathbf{z}_t)$.} The closed-form expressions for the mean and variance of $p(\mathbf{z}_s \mid \mathbf{z}_t)$ can be further simplified to include more numerically stable functions like $\mathrm{expm1}(\cdot) = \exp(\cdot) - 1$, which are available in standard numerical packages. The resulting simplified expressions -- which we derive in detail next -- enable more numerically stable implementations as highlighted by~\cite{kingma2021variational}.
+
+Recall from Section~\ref{subsubsec: Noise Schedule} that: $\sigma_t^2 = \mathrm{sigmoid}(\gamma_{\boldsymbol{\eta}}(t))$, and $\alpha_t^2 = \mathrm{sigmoid}(-\gamma_{\boldsymbol{\eta}}(t))$, for any $t$. For brevity, let $s$ and $t$ be shorthand notation for $\gamma_{\boldsymbol{\eta}}(s)$ and $\gamma_{\boldsymbol{\eta}}(t)$ respectively. The posterior variance simplifies to:
+%
+\begin{align}
+    \sigma_Q^2(s,t) & = \frac{\sigma_{t|s}^2\sigma_s^2}{\sigma^2_t} = \frac{\sigma_s^2\left(\sigma_{t}^2 - \frac{\alpha_t^2}{\alpha_s^2}\sigma_s^2\right)}{\sigma^2_t} \\[5pt] & = \frac{\frac{1}{1+e^{-s}} \cdot \left(\frac{1}{1+e^{-t}} - \frac{(1+e^{t})^{-1}}{(1+e^s)^{-1}}\cdot\frac{1}{1+e^{-s}}\right)}{\frac{1}{1+e^{-t}}} 
+    \customtag{cancel denominator}
+    % & \hfill \text{(cancel denominator)}
+    \\[5pt] & = \left(1 + e^{-t}\right) \cdot \frac{1}{1+e^{-s}} \cdot \left(\frac{1}{1+e^{-t}} - \frac{1+e^s}{1+e^t}\cdot\frac{1}{1+e^{-s}}\right) 
+    \customtag{distribute $1 + e^{-t}$} \customlabel{eq: distribute}
+    \\[5pt] & = \frac{1}{1+e^{-s}} \cdot \left(1 - \frac{1+e^s}{1+e^t}\cdot\frac{1 + e^{-t}}{1+e^{-s}}\right)
+    \\[5pt] & = \frac{1}{1+e^{-s}} \cdot \left(1 - \frac{e^s\left(1+e^{-s}\right)} {1+e^t}\cdot\frac{e^{-t}\left(1+e^{t}\right)}{1+e^{-s}}\right) 
+    \customtag{cancel common factors}
+    \\[5pt] & = \frac{1}{1+e^{-s}} \cdot \left(1 -e^{s-t}\right) \label{eq: 1me}
+    \\[5pt] & = \sigma_s^2 \cdot \left( -\mathrm{expm1}\left(\gamma_{\boldsymbol{\eta}}(s) -\gamma_{\boldsymbol{\eta}}(t)\right)\right).
+    \customtag{$\mathrm{expm1}(\cdot) = \exp(\cdot) - 1$}
+\end{align}
+%
+The posterior mean -- under a noise-prediction model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ -- simplifies in a similar fashion to:
+%
+\begin{align}
+    \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) & = \frac{1}{\alpha_{t|s}}\mathbf{z}_t - \frac{\sigma^2_{t|s}}{\alpha_{t|s}\sigma_{t}}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - \frac{\sigma^2_{t|s}}{\sigma_t}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right)
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - \frac{\sigma_t^2 - \frac{\alpha_t^2}{\alpha_s^2}\sigma_s^2}{\sigma_t}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right) 
+    \customtag{substituting $\sigma_{t|s}^2 = \sigma_t^2 - \alpha_{t|s}^2\sigma_s^2$}
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - \frac{\frac{1}{1+e^{-t}} - \frac{1+e^s}{1+e^t} \cdot \frac{1}{1+e^{-s}}}{\sqrt{\frac{1}{1+e^{-t}}}}\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right)
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - (1+e^{-t}) \cdot \sqrt{\frac{1}{1+e^{-t}}} \cdot  \left(\frac{1}{1+e^{-t}} - \frac{1+e^s}{1+e^t} \cdot \frac{1}{1+e^{-s}}\right)\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right) \label{eq: big_eq}
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - \sigma_t \left(1 - e^{s-t}\right)\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right)
+    \\[5pt] & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t + \sigma_t \mathrm{expm1}\left(\gamma_{\boldsymbol{\eta}}(s) -\gamma_{\boldsymbol{\eta}}(t) \right)\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right),
+\end{align}
+%
+where Equation~\ref{eq: big_eq} simplifies significantly via the same logical steps in Equations~\ref{eq: distribute}-\ref{eq: 1me} above.
+
+\paragraph{Ancestral Sampling.} To generate random samples from our generative model $p(\mathbf{x} \mid \mathbf{z}_0)\prod_{i=1}^T p(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)})$ we can perform what's known as \textit{ancestral sampling}, i.e starting from $\mathbf{z}_1 \sim \mathcal{N}\left(0, \mathbf{I}\right)$ and following the estimated reverse Markov Chain: $\mathbf{z}_1 \to \mathbf{z}_{(T-1)/T} \to \mathbf{z}_{(T-2)/T} \to \cdots \to \mathbf{z}_0 \to \mathbf{x}$, according to:
+%
+\begin{align}
+    \mathbf{z}_s & = \frac{\alpha_s}{\alpha_t} \left( \mathbf{z}_t - \sigma_t c \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right) + \sqrt{1-\alpha_s^2 c} \boldsymbol{\epsilon}
+    \\[5pt] & = \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) + \sigma_{Q}(s,t) \boldsymbol{\epsilon},
+\end{align}
+%
+where $c = -\mathrm{expm1}\left(\gamma_{\boldsymbol{\eta}}(s) -\gamma_{\boldsymbol{\eta}}(t)\right)$, $\boldsymbol{\epsilon} \sim \mathcal{N}\left(0, \mathbf{I}\right)$, and we used the fact that $\sigma_s = \sqrt{1-\alpha^2_s}$ by definition in a variance-preserving diffusion process. In summary, since the forward process transitions are Markovian and linear Gaussian, the top-down posterior is tractable due to Gaussian conjugacy. Furthermore, our generative model is defined to be equal to the top-down posterior $p(\mathbf{z}_s \mid \mathbf{z}_t) = q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x} = \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t))$ but with a denoising model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ in place of $\mathbf{x}$, so we can use our estimate of the posterior mean $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t)$ to sample from $q$ in reverse order following a Markov chain: $\mathbf{z}_1 \to \mathbf{z}_{(T-1)/T} \to \cdots \to \mathbf{z}_0 \to \mathbf{x}$.
+%
+\subsubsection{Variational Lower Bound}
+\label{subsubsec: Variational Lower Bound: Top-down HVAE}
+%
+The optimization objective of a discrete-time variational diffusion model is the ELBO in Equation~\ref{eq: hvae_elbo}, i.e. the same as a hierarchical VAE's with a \textit{top-down} inference model. For consistency, we re-express the VLB here using the discrete-time index notation: $s(i) = (i-1)/T$,  $t(i) = i/T$, as follows:
+%
+\begin{align}
+    -\log p(\mathbf{x}) \leq -\mathbb{E}_{q(\mathbf{z}_0 \mid \mathbf{x})}\left[\log p(\mathbf{x} \mid \mathbf{z}_0) \right] + D_{\mathrm{KL}}\left( q(\mathbf{z}_1 \mid \mathbf{x}) \parallel p(\mathbf{z}_1) \right) + \underbrace{{\mathcal{L}_T(\mathbf{x})}}_{\text{Diffusion loss}} = -\mathrm{VLB}(\mathbf{x})
+\end{align}
+%
+where the so-called diffusion loss $\mathcal{L}_T(\mathbf{x})$ term is given by:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) = \sum_{i=1}^T \mathbb{E}_{q(\mathbf{z}_{t(i)} \mid \mathbf{x})} \left[D_{\mathrm{KL}}(q(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}, \mathbf{x}) \parallel p(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}))\right]. 
+\end{align}
+%
+The remaining terms are the familiar expected reconstruction loss and KL of the posterior from the prior. For reasons explained in detail in Section~\ref{subsec: Discrete-time Generative Model}, under a well-specified diffusion process, these terms can be safely omitted in practice as they do not provide meaningful contributions to the loss.
+%
+\subsubsection{Deriving $D_{\mathrm{KL}}(q(\mathbf{z}_{s} \mid \mathbf{z}_{t}, \mathbf{x}) \parallel p(\mathbf{z}_{s} \mid \mathbf{z}_{t}))$}
+\label{subsubsec: deriving dkl}
+%
+Minimizing the diffusion loss $\mathcal{L}_T(\mathbf{x})$ involves computing the (expected) KL divergence of the posterior from the prior, at each noise level. \citet{kingma2021variational} provide a relatively detailed derivation of $D_{\mathrm{KL}}(q(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}, \mathbf{x}) \parallel p(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}))$; we re-derive it here for completeness, whilst adding some additional instructive details to aid in understanding.
+
+Using $s$ and $t$ as shorthand notation for $s(i)$ and $t(i)$, recall that the posterior is given by:
+%
+\begin{align}
+    &&q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x}) & = \mathcal{N}\left(\mathbf{z}_s; \boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t), \sigma^2_Q(s,t) \mathbf{I}\right),
+    && \boldsymbol{\mu}_Q(\mathbf{z}_t,\mathbf{x};s,t) = \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\mathbf{x},&&
+\end{align}
+%
+and since we have defined our generative model as $p(\mathbf{z}_s \mid \mathbf{z}_t) = q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x} = \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t))$ we have
+%
+\begin{align}
+    && p(\mathbf{z}_s \mid \mathbf{z}_t) = \mathcal{N}\left(\mathbf{z}_s; \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t), \sigma^2_Q(s,t)\mathbf{I}\right), && \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t) = \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t). &&
+\end{align}
+%
+It is arguably more intuitive to parameterize $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t; s, t)$ in terms of the denoising model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ as shown above, but as outlined in Section~\ref{subsubsec: Deriving p}, using a noise-prediction model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ or a score model $\mathbf{s}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ would be equally valid.
+
+Of particular importance is the fact that the variances of both $q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x})$ and $p(\mathbf{z}_s \mid \mathbf{z}_t)$ are equal:
+%
+\begin{align}
+    \sigma^2_Q(s,t) = \frac{\sigma_{t|s}^2\sigma_s^2}{\alpha_{t|s}^2 \sigma_s^2 + \sigma_{t|s}^2} = \frac{\sigma_{t|s}^2\sigma_s^2}{\sigma_t^2},
+\end{align}
+%
+where the result in Equation~\ref{eq: post_var}, $\sigma_{t|s}^2 = \sigma^2_t - \alpha_{t|s}^2 \sigma_s^2$, simplifies the denominator. Furthermore, both distributions have identical isotropic/spherical covariances: $\sigma_Q^2(s,t)\mathbf{I}$, which we denote as $\sigma_Q^2\mathbf{I}$ for short. 
+
+The KL divergence between $D$-dimensional Gaussian distributions is available in closed form, thus:
+%
+\begin{align}
+    D_{\mathrm{KL}}(q(\mathbf{z}_{s} \mid \mathbf{z}_{t},   \mathbf{x}) \parallel p(\mathbf{z}_{s} \mid \mathbf{z}_{t})) & =
+  \frac{1}{2}\left[ \operatorname{Tr}\left(\frac{1}{\sigma_Q^2}\mathbf{I}\sigma_Q^2\mathbf{I}\right)  - D +
+    \left(\boldsymbol{\mu}_{\boldsymbol{\theta}} - \boldsymbol{\mu}_Q\right)^\top\frac{1}{\sigma_Q^2}\mathbf{I}\left(\boldsymbol{\mu}_{\boldsymbol{\theta}} - \boldsymbol{\mu}_Q\right) + \log \frac{\det\sigma_Q^2\mathbf{I}}{\det \sigma_Q^2\mathbf{I}}\right]
+    \\[5pt]  & =
+    \frac{1}{2}\left[D - D +
+    \frac{1}{\sigma_Q^2}\left(\boldsymbol{\mu}_{\boldsymbol{\theta}} - \boldsymbol{\mu}_Q\right)^\top\left(\boldsymbol{\mu}_{\boldsymbol{\theta}} - \boldsymbol{\mu}_Q\right) + 0 \right]
+    \\[5pt] & = \frac{1}{2\sigma_{Q}^{2}}\sum_{i=1}^D\left(  \boldsymbol{\mu}_{Q,i} - \boldsymbol{\mu}_{\boldsymbol{\theta},i}\right)^2
+    \\[5pt] & = \frac{1}{2 \sigma^2_{Q}(s,t)} \left\| \boldsymbol{\mu}_{Q}(\mathbf{z}_t, \mathbf{x}; s, t) - \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t; s, t) \right\|^2_2. \label{eq: klqp}
+\end{align}
+% \newpage
+It is possible to simplify the above equation quite significantly, resulting in a short expression involving the signal-to-noise ratio of the diffused data.
+
+To that end, expressing Equation~\ref{eq: klqp} in terms of the denoising model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ we get:
+%
+\begin{align}
+    D_{\mathrm{KL}}(q(\mathbf{z}_{s} \mid \mathbf{z}_{t},   \mathbf{x}) \parallel p(\mathbf{z}_{s} \mid \mathbf{z}_{t})) 
+    & = \frac{1}{2 \sigma^2_{Q}(s,t)} \left\| \boldsymbol{\mu}_{Q}(\mathbf{z}_t, \mathbf{x}; s, t) - \boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t; s, t) \right\|^2_2 
+    \\[5pt] & = \frac{1}{2 \sigma^2_{Q}(s,t)} \left\| \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\mathbf{x} - \left( \frac{\alpha_{t|s}\sigma_s^2}{\sigma^2_{t}}\mathbf{z}_t + \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right)\right\|^2_2
+    \\[5pt] & = \frac{1}{2 \sigma^2_{Q}(s,t)} \left\| \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\mathbf{x} - \frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2
+    \\[5pt] & = \frac{1}{2 \sigma^2_{Q}(s,t)} \left(\frac{\alpha_s \sigma^2_{t|s}}{\sigma_{t}^2}\right)^2 \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2  
+    \\[5pt] & = \frac{\sigma_t^2}{2 \sigma^2_{t|s}\sigma^2_{s}} \frac{\alpha_s^2 \sigma^4_{t|s}}{\sigma_{t}^4} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \customtag{recall $\sigma_Q^2(s,t)= (\sigma_{t|s}^2\sigma_s^2)/ \sigma_t^2$}
+    \\[5pt] & = \frac{1}{2 \sigma^2_{s}} \frac{\alpha_s^2 \sigma^2_{t|s}}{\sigma_{t}^2} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2
+    \customtag{exponents cancel}
+    \\[5pt] & = \frac{1}{2 \sigma^2_{s}} \frac{\alpha_s^2 (\sigma^2_{t} - \alpha^2_{t|s}\sigma_s^2)}{\sigma_{t}^2} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \customtag{recall $\sigma_{t|s}^2 = \sigma_{t}^2 - \alpha^2_{t|s}\sigma_s^2$}
+    \\[5pt] & = \frac{1}{2} \frac{\sigma^{-2}_{s}\left(\alpha_s^2 \sigma^2_{t} - \alpha^2_{s}\frac{\alpha^2_{t}}{\alpha^2_{s}}\sigma_s^2\right)}{\sigma{t}^2} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \\[5pt] & = \frac{1}{2} \frac{\alpha_s^2 \sigma^2_{t}\sigma^{-2}_{s} - \alpha^2_{t}}{\sigma_{t}^2} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \\[5pt] & = \frac{1}{2} \left(\frac{\alpha_s^2 \sigma^2_{t}}{\sigma_{s}^2}\frac{1}{\sigma_t^2} - \frac{\alpha^2_{t}}{\sigma_{t}^2} \right) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \\[5pt] & = \frac{1}{2} \left(\frac{\alpha_s^2}{\sigma_{s}^2} - \frac{\alpha^2_{t}}{\sigma_{t}^2}\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \\[5pt] & = \frac{1}{2} \left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2. \label{eq: kl_denoising}
+\end{align}
+%
+In words, the final expression shows that the diffusion loss, at timestep $t$, consists of a squared error term involving the data $\mathbf{x}$ and the model $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$, weighted by a difference in signal-to-noise ratio at $s$ and $t$.
+
+%
+\paragraph{Parameterizations.} Translating between different loss parameterizations is straightforward due to the linearity of the forward diffusion process $\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon}$. This will be particularly useful for analyzing diffusion loss objectives later on. For now, we provide the derivations of each reparameterization and summarize the results in Table~\ref{tab: equiv_losses}. Firstly, we rewrite image prediction in terms of noise prediction by:
+%
+\begin{align}
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 & = \left\| \frac{\mathbf{z}_t - \sigma_t \boldsymbol{\epsilon}}{\alpha_t} - \frac{\mathbf{z}_t - \sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t} \right\|^2_2 \customtag{since $\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon}$}
+    \\[5pt] & = \frac{\sigma_t^2}{\alpha_t^2}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2. \customtag{cancel terms and factor}
+\end{align}
+%
+Similarly, in terms of $\mathbf{v}$-prediction~\citep{salimans2022progressive} we first have:
+%
+\begin{align}
+    \mathbf{v} & \coloneqq \alpha_t \boldsymbol{\epsilon} - \sigma_t \mathbf{x} \customtag{by definition} 
+    \\[5pt] & = \alpha_t \left(\frac{\mathbf{z}_t - \alpha_t\mathbf{x}}{\sigma_t}\right) - \sigma_t \mathbf{x} \customtag{subtituting $\boldsymbol{\epsilon} = (\mathbf{z}_t - \alpha_t\mathbf{x}) / \sigma_t$}
+    \\[5pt] \alpha_t\mathbf{z}_t - \sigma_t \mathbf{v} & = (1-\sigma_t^2)\mathbf{x} + \sigma_t^2\mathbf{x} \customtag{$\alpha_t^2 = 1 - \sigma_t^2$ in a variance preserving process}
+    \\[5pt] \implies \mathbf{x} & = \alpha_t\mathbf{z}_t - \sigma_t \mathbf{v},
+\end{align}
+which we can now substitute into the image prediction loss, with a $\mathbf{v}$-prediction model $\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$, to get:
+\begin{align}
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 & = \left\| \alpha_t\mathbf{z}_t - \sigma_t \mathbf{v} - \left( \alpha_t\mathbf{z}_t - \sigma_t \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right) \right\|^2_2 
+    \\[5pt] & = \left\| \sigma_t \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \sigma_t \mathbf{v} \right\|^2_2 \customtag{$\alpha_t\mathbf{z}_t$ terms cancel}
+    \\[5pt] & = \sigma_t^2\left\| \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{v} \right\|^2_2 \customtag{by factoring}
+\end{align}
+%
+To rewrite the noise prediction loss in terms of image prediction we have:
+%
+\begin{align}
+    \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 & = \left\| \frac{\mathbf{z}_t - \alpha_t \mathbf{x}}{\sigma_t} - \frac{\mathbf{z}_t - \alpha_t \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\sigma_t} \right\|^2_2 \customtag{recall that $\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon}$}
+    \\[5pt] & = \left\| \frac{\alpha_t}{\sigma_t} \left(\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{x} \right) \right\|^2_2 \customtag{cancel $\mathbf{z}_t$ terms and factor}
+    \\[5pt] & = \mathrm{SNR}(t) \left\| \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{x} \right\|^2_2 \customtag{recall $\mathrm{SNR}(t) = \alpha^2_t/\sigma^2_t$},
+\end{align}
+%
+whereas in terms of $\mathbf{v}$-prediction we get:
+%
+\begin{align}
+    \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 & = \left\| \frac{\mathbf{v} + \sigma_t \mathbf{x}}{\alpha_t} - \frac{\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) + \sigma_t \mathbf{x}}{\alpha_t} \right\|^2_2 \customtag{solving $\mathbf{v} = \alpha_t \boldsymbol{\epsilon} - \sigma_t \mathbf{x}$ for $\boldsymbol{\epsilon}$}
+    \\[5pt] & = \left\| \frac{1}{\alpha_t} \left(\mathbf{v} -\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right) \right\|^2_2 \customtag{cancel $\mathbf{x}$ terms and factor}
+    \\[5pt] & =  \frac{1}{\alpha_t^2} \left\| \mathbf{v} 
+ - \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right\|^2_2.
+\end{align}
+%
+
+\begin{table}[t]
+    \centering
+    \begin{tabular}{lccc}
+        \toprule
+        & Image Denoising & Noise Prediction & Velocity Prediction \\
+        Loss & $\|\mathbf{x} -\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ & 
+        $\|\boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ & $\|\mathbf{v} -\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ 
+        \\[2pt]
+        \midrule 
+        \\[-10pt]
+        $\|\mathbf{x} -\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ & 1 & $\sigma_t^2 / \alpha_t^2$ & $\sigma_t^2$
+        \\[5pt]
+        $\|\boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ & $\alpha_t^2 / \sigma_t^2$ & 1 & $1/\alpha_t^2$  
+        \\[5pt]
+
+        $\|\mathbf{v} -\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$ & $\sigma^2_t\left(\alpha_t^2 / \sigma_t^2 + 1\right)^2$ & $\alpha^2_t\left(\sigma_t^2 / \alpha_t^2 + 1\right)^2$ & 1  
+        \\[5pt]
+        \bottomrule
+    \end{tabular}
+    \caption{Translating between three main ways to parameterize a diffusion model loss. Each loss on the LHS column can be rewritten in terms of the other parameterizations weighted by a specific constant. For example, the image prediction loss can be written in terms of noise prediction weighted by $\sigma_t^2 /\alpha_t^2$, that is: $\|\mathbf{x} -\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2 = \sigma_t^2 /\alpha_t^2 \|\boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$, whereas the $\mathbf{v}$-prediction~\citep{salimans2022progressive} loss can be written in terms of image prediction by: $\|\mathbf{v} -\hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2 = \sigma^2_t\left(\alpha_t^2 / \sigma_t^2 + 1\right)^2 \|\mathbf{x} -\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \|_2^2$.
+    }
+    \label{tab: equiv_losses}
+\end{table}
+%
+Lastly, we can rewrite $\mathbf{v}$-prediction in terms of image prediction as follows:
+%
+\begin{align}
+    \left\| \mathbf{v} 
+ - \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right\|^2_2 & = \left\| \alpha_t\boldsymbol{\epsilon} - \sigma_t \mathbf{x} - \left( \alpha_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \sigma_t \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right) \right\|^2_2 \customtag{since $\mathbf{v} \coloneqq \alpha_t\boldsymbol{\epsilon} - \sigma_t \mathbf{x}$}
+ \\[5pt] & = \left\| \alpha_t\left( \frac{\mathbf{z}_t - \alpha_t\mathbf{x}}{\sigma_t}\right) - \sigma_t \mathbf{x} - \alpha_t\left( \frac{\mathbf{z}_t - \alpha_t\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\sigma_t}\right) + \sigma_t \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2
+ \\[5pt] & = \left\| \frac{\alpha_t^2\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\sigma_t} + \sigma_t\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \frac{\alpha_t^2\mathbf{x}}{\sigma_t} - \sigma_t\mathbf{x} \right\|^2_2 \customtag{cancel $\mathbf{z}_t$ terms and factor}
+\\[5pt] & = \left\| \left(\frac{\alpha_t^2}{\sigma_t} + \sigma_t\right) \left(\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{x} \right)\right\|^2_2
+\\[5pt] & = \sigma_t^2\left(\mathrm{SNR}(t) + 1\right)^2 \left\| \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \mathbf{x} \right\|^2_2 \customtag{recall $\mathrm{SNR}(t) = \alpha^2_t/\sigma^2_t$}.
+\end{align}
+%
+We proceed similarly for noise prediction, instead substituting $\mathbf{x}$-related terms to get:
+\begin{align}
+    \left\| \mathbf{v} 
+ - \hat{\mathbf{v}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right\|^2_2 & = \left\| \alpha_t\boldsymbol{\epsilon} - \sigma_t \mathbf{x} - \left( \alpha_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \sigma_t \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right) \right\|^2_2 
+ \\[5pt] & = \left\| \alpha_t\boldsymbol{\epsilon} - \sigma_t \left( \frac{\mathbf{z}_t - \sigma_t\boldsymbol{\epsilon}}{\alpha_t}\right) - \alpha_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) + \sigma_t \left( \frac{\mathbf{z}_t - \sigma_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t}\right) \right\|^2_2
+ \\[5pt] & = \left\| \left(\frac{\sigma_t^2}{\alpha_t} + \alpha_t\right) \left( \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right)\right\|^2_2 \customtag{cancel $\mathbf{z}_t$ terms and factor}
+\\[5pt] & = \alpha^2_t\left(\frac{\sigma_t^2}{\alpha^2_t} + 1\right)^2 \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2.
+\end{align}
+
+\subsubsection{Monte Carlo Estimator of $\mathcal{L}_T(\mathbf{x})$}
+%
+To calculate the diffusion loss $\mathcal{L}_T(\mathbf{x})$ in practice, we can use an unbiased Monte Carlo estimator by: 
+\begin{enumerate}[(i)]
+    \item Using the \textit{reparameterisation gradient estimator}~\citep{kingma2013auto,rezende2014stochastic} to reparameterize $\mathbf{z}_t \sim q(\mathbf{z}_t \mid \mathbf{x})$ following:
+    \begin{align}
+        &&\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon} \coloneqq g_{\alpha_t,\sigma_t}(\boldsymbol{\epsilon}, \mathbf{x}),&& \text{where} &&\boldsymbol{\epsilon} \sim p(\boldsymbol{\epsilon}), &&\text{and} &&p(\boldsymbol{\epsilon}) = \mathcal{N}(0, \mathbf{I}).&&
+    \end{align}
+    %
+    \item Avoid having to compute all $T$ loss terms by selecting a single timestep, sampled uniformly at random from $i \sim U\{1,T\}$, to use at each training iteration for estimating the diffusion loss.
+\end{enumerate}
+%
+Under this setup, the estimator of the diffusion loss $\mathcal{L}_T(\mathbf{x})$ is given by:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) & = \sum_{i=1}^T \mathbb{E}_{q(\mathbf{z}_{t(i)} \mid \mathbf{x})} \left[D_{\mathrm{KL}}(q(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}, \mathbf{x}) \parallel p(\mathbf{z}_{s(i)} \mid \mathbf{z}_{t(i)}))\right]
+    \\[5pt] & = \sum_{i=1}^T \mathbb{E}_{q(\mathbf{z}_{t} \mid \mathbf{x})} \left[D_{\mathrm{KL}}(q(\mathbf{z}_{s} \mid \mathbf{z}_{t}, \mathbf{x}) \parallel p(\mathbf{z}_{s} \mid \mathbf{z}_{t}))\right] 
+    \customtag{shorthand notation $s$, $t$}
+    \\[5pt] & = \sum_{i=1}^T\int \left(
+    \frac{1}{2}\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right)    
+    q(\mathbf{z}_t \mid \mathbf{x})\mathop{\mathrm{d}\mathbf{z}_t} 
+    \customtag{from Equation~\ref{eq: kl_denoising}}
+    \\[5pt] & = \frac{1}{2}\int  \left(
+    \sum_{i=1}^T\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( g_{\alpha_t, \sigma_t}(\boldsymbol{\epsilon},\mathbf{x});t\right) \right\|^2_2 \right)    
+    p(\boldsymbol{\epsilon}) \mathop{\mathrm{d}\boldsymbol{\epsilon}} 
+    \customtag{as $\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon}$}
+    \\[5pt] & = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}
+    \left[T\cdot\mathbb{E}_{i \sim U{\{1,T\}}}\left[\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right]\right] 
+    \customtag{MC estimate} \customlabel{eq: mc_estm}
+    \\[5pt] & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right]. \label{eq: final_mc}
+\end{align}
+%
+For total clarity, we used Monte Carlo estimation and a basic identity to arrive at Equation~\ref{eq: mc_estm}:
+%
+\begin{align}
+    \mathbb{E}_q\left[f(x)\right] \approx \frac{1}{T}\sum_{i=1}^T f(x_i) \implies T \cdot \mathbb{E}_q\left[f(x)\right] \approx \sum_{i=1}^T f(x_i),
+\end{align}
+%
+where $x_i \sim q$ are random samples from a distribution $q$, which is representative of $U\{1,T\}$ in our case.
+
+Equation~\ref{eq: final_mc} can be rewritten in terms of the more commonly used noise-prediction model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$ as:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) 
+    & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \frac{\mathbf{z}_t - \sigma_t \boldsymbol{\epsilon}}{\alpha_t} - \frac{\mathbf{z}_t - \sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t} \right\|^2_2 \right] 
+    \\[5pt] & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \frac{\sigma_t}{\alpha_t}\left(\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) - \boldsymbol{\epsilon} \right)\right\|^2_2 \right]
+    \\[5pt] & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\frac{\sigma_t^2}{\alpha_t^2}\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\mathrm{SNR}(t)^{-1}\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[
+    \left(\frac{\mathrm{SNR}(s)}{\mathrm{SNR}(t)} - 1\right) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right].
+\end{align}
+The constant term inside the expectation can be re-expressed in more numerically stable primitives as:
+%
+\begin{align}
+    \frac{\mathrm{SNR}(s)}{\mathrm{SNR}(t)} - 1 & = \frac{\alpha_s^2}{\sigma_s^2} \olddiv \frac{\alpha_t^2}{\sigma_t^2} - 1
+    \\[5pt] & = 
+    \frac{\alpha_s^2\sigma_t^2}{\alpha_t^2\sigma_s^2} - 1
+    \\[5pt] & = 
+    \frac{\mathrm{sigmoid}(-\gamma_{\boldsymbol{\eta}}(s))\cdot \mathrm{sigmoid}(\gamma_{\boldsymbol{\eta}}(t))}{\mathrm{sigmoid}(-\gamma_{\boldsymbol{\eta}}(t))\cdot \mathrm{sigmoid}(\gamma_{\boldsymbol{\eta}}(s))} - 1,
+\end{align}
+%
+letting $s$ and $t$ denote $\gamma_{\boldsymbol{\eta}}(s)$ and $\gamma_{\boldsymbol{\eta}}(t)$ for brevity we have:
+%
+\begin{align}
+    \frac{\frac{1}{1+e^s} \cdot \frac{1}{1+e^{-t}}}{\frac{1}{1+e^t} \cdot \frac{1}{1+e^{-s}}} - 1 & = \frac{\left(1 + e^t\right)\left(1 + e^{-s}\right)}{\left(1 + e^{s}\right)\left(1 + e^{-t}\right)} - 1
+    \\[5pt] & = \frac{e^t\left(1 + e^{-t}\right)e^{-s}\left(1 + e^{s}\right)}{\left(1 + e^{s}\right)\left(1 + e^{-t}\right)} - 1
+    \\[5pt] & = e^te^{-s} - 1  
+    \\[5pt] & = \mathrm{expm1}\left(\gamma_{\boldsymbol{\eta}}(t) - \gamma_{\boldsymbol{\eta}}(s) \right). \label{eq: e_constant}
+\end{align}
+%
+Substituting the above back into the (noise-prediction-based) diffusion loss estimator gives:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\mathrm{expm1}\left(\gamma_{\boldsymbol{\eta}}(t) - \gamma_{\boldsymbol{\eta}}(s) \right)\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\alpha_t \mathbf{x} + \sigma_t\boldsymbol{\epsilon};t) \right\|^2_2 \right].
+\end{align}
+%
+

@@ -1,0 +1,49 @@
+\section*{Notation}
+\addcontentsline{toc}{section}{\protect\numberline{0}Notation}
+\begin{table}[!h]
+    \centering
+    \begin{tabular}{rll}
+        &\textbf{Description} & \textbf{Section} \\[8pt]
+        % \midrule
+        $\mathbf{x}$ & Observed datapoint, e.g. input image & \S\ref{sec: introduction} \\[5pt]
+        $t$ & Time variable $t \in \{1,\dots,T\}$, or $t \in [0,1]$ for continuous-time & \S\ref{subsec: Hierarchical VAE},~\S\ref{subsec: Gaussian Diffusion Process: Forward Time} \\[5pt]
+        $\mathbf{z}_t$ & Latent variable at time $t$
+        % , given by $\mathbf{z}_t = \alpha_t\mathbf{x} + \sigma_t \boldsymbol{\epsilon}_t$, $\boldsymbol{\epsilon}_t \sim \mathcal{N}(0, \mathbf{I})$ 
+        & \S\ref{subsec: Hierarchical VAE} \\[5pt]
+        $\mathbf{z}_{1:T}$ & Finite set of latent variables $\mathbf{z}_1, \mathbf{z}_2,\dots,\mathbf{z}_T$ & \S\ref{subsec: Hierarchical VAE} \\[5pt]
+        $\mathbf{z}_{0:1}$ & Set of latent variables in continuous-time from $t{=}0$ to $t{=}1$ & \S\ref{subsec: Gaussian Diffusion Process: Forward Time} \\[5pt]
+        $\alpha_t$ & Noise schedule coefficient $\alpha_t \in (0, 1)$ & \S\ref{subsec: Gaussian Diffusion Process: Forward Time} \\[5pt]
+        $\sigma^2_t$ & Noise schedule variance $\sigma^2_t \in (0, 1)$ & \S\ref{subsec: Gaussian Diffusion Process: Forward Time} \\[5pt]
+        $\boldsymbol{\epsilon}_t$ & Isotropic random noise, $\boldsymbol{\epsilon}_t \sim \mathcal{N}(0,\mathbf{I})$ & \S\ref{sec: introduction}, \S\ref{subsec: Gaussian Diffusion Process: Forward Time}\\[5pt]
+        $\mathrm{SNR}(t)$ & Signal-to-noise ratio function, defined as $\alpha^2_t / \sigma^2_t$ & \S\ref{subsubsec: Noise Schedule}\\[5pt]
+        $q(\mathbf{z}_t \mid \mathbf{x})$ & Latent variable distribution & \S\ref{subsec: Gaussian Diffusion Process: Forward Time} \\[5pt]
+        $q(\mathbf{z}_t \mid \mathbf{z}_s)$ & Transition distribution from time $s$ to time $t$, where $s < t$ & \S\ref{subsubsec: lgt} \\[5pt]
+        $\alpha_{t|s}$ & Transition coefficient from time $s$ to $t$ & \S\ref{subsubsec: lgt} \\[5pt]
+        $\sigma^2_{t|s}$ & Variance of transition distribution & \S\ref{subsubsec: lgt} \\[5pt]
+        $q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x})$ & Top-down posterior distribution at time $s < t$ & \S\ref{subsec: Top-down Inference Model}, \S\ref{subsubsec: qzs} \\[5pt]
+        $\boldsymbol{\mu}_Q(\mathbf{z}_t, \mathbf{x};s,t)$ & Mean of top-down posterior distribution at time $s$; $\boldsymbol{\mu}_Q$ for short & \S\ref{subsubsec: qzs} \\[5pt]
+        $\sigma^2_Q(s,t)$ & Variance of top-down posterior distribution; $\sigma^2_Q$ for short & \S\ref{subsubsec: qzs} \\[5pt]
+        $p(\mathbf{z}_s \mid \mathbf{z}_t)$ & Generative transition distribution defined as $q(\mathbf{z}_s \mid \mathbf{z}_t, \mathbf{x}=\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t, t))$ & \S\ref{subsec: Discrete-time Generative Model} \\[5pt]
+        $p(\mathbf{x} \mid \mathbf{z}_0)$ & Image likelihood, equiv. $p(\mathbf{x} \mid \mathbf{z}_1)$ in discrete-time & \S\ref{subsec: Discrete-time Generative Model}, \S\ref{subsec: Hierarchical VAE} \\[5pt]
+        $\boldsymbol{\phi}$ & Variational parameters pertaining to $q_{\boldsymbol{\phi}}$ & \S\ref{sec: introduction} 
+        \\[5pt]
+        $\boldsymbol{\theta}$ & Model parameters pertaining to $p_{\boldsymbol{\theta}}$ & \S\ref{sec: introduction}, \S\ref{subsec: Discrete-time Generative Model} \\[5pt]
+        $\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t, t)$ & Denoising model for mapping any $\mathbf{z}_t$ to $\mathbf{x}$ & \S\ref{subsubsec: Deriving p} \\[5pt]
+        $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t, t)$ & Noise prediction model, approximates $\nabla_{\mathbf{z}_t} \log q(\mathbf{z}_t)$ & \S\ref{subsubsec: Deriving p} \\[5pt]
+        $\hat{\mathbf{s}}_{\boldsymbol{\theta}}(\mathbf{z}_t, t)$ & Score model, equal to $-\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t, t) / \sigma_t$ & \S\ref{subsubsec: Deriving p} \\[5pt]
+        $\boldsymbol{\mu}_{\boldsymbol{\theta}}(\mathbf{z}_t;s,t)$ & Predicted posterior mean at time $s$; $\boldsymbol{\mu}_{\boldsymbol{\theta}}$ for short & \S\ref{subsubsec: Deriving p} \\[5pt]
+        $\mathrm{VLB}(\mathbf{x})$ & Single-datapoint variational lower bound; equiv. $\mathrm{ELBO}(\mathbf{x})$ & \S\ref{sec: introduction}, \S\ref{subsubsec: Variational Lower Bound: Top-down HVAE} \\[5pt]
+        $\mathcal{L}_T(\mathbf{x})$ & Discrete-time diffusion loss & \S\ref{subsubsec: Variational Lower Bound: Top-down HVAE} \\[5pt]
+        $\mathcal{L}_{\infty}(\mathbf{x})$ & Continuous-time diffusion loss & \S\ref{subsubsec: on infinite depth}, \S\ref{subsubsec: Monte Carlo Estimator of linfty} \\[5pt]
+        $\mathcal{L}_w(\mathbf{x})$ & Weighted diffusion loss; also $\mathcal{L}_{\infty}(\mathbf{x}, w)$ & \S\ref{subsubsec: weighted diffusion loss}, \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $\boldsymbol{\gamma}_{\boldsymbol{\eta}}(t)$ & Neural network with parameters $\boldsymbol{\eta}$ for learning the noise schedule & \S\ref{subsubsec: Noise Schedule} \\[5pt]
+        $w(\cdot)$ & Noise level weighting function & \S\ref{subsubsec: weighted diffusion loss} \\[5pt]
+        $\lambda$ & Logarithm of the signal-to-noise ratio $\mathrm{SNR}(t)$; also $\lambda_t$ & \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $\lambda_{\mathrm{min}}$ & Lowest log signal-to-noise ratio given by $f_\lambda(t=1)$ & \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $\lambda_{\mathrm{max}}$ & Highest log signal-to-noise ratio given by $f_\lambda(t=0)$ & \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $p(\lambda)$ & Density over noise levels & \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $f_\lambda(t)$ & Noise schedule function, mapping $t$ to $\lambda$ & \S\ref{subsubsec: noise schedule density} \\[5pt]
+        $\mathcal{L}(t;\mathbf{x})$ & Joint KL divergence up to time $t$ & \S\ref{subsubsec: elbo with data aug} \\[5pt]
+        $p_w(t)$ & Data augmentation kernel specified by $w(\cdot)$ & \S\ref{subsubsec: elbo with data aug}
+    \end{tabular}
+\end{table}

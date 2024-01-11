@@ -1,0 +1,314 @@
+\newpage
+\subsection{Understanding Diffusion Objectives}
+\label{subsec: Understanding Diffusion Objectives}
+%
+In this section, we provide a deeper understanding of the close connection between optimizing various \textit{weighted} diffusion objectives and maximizing the variational lower bound (a.k.a. the ELBO). Our exposition is designed to be instructive and consistent with VDMs\texttt{++}~\citep{kingma2023understanding}, without departing too far from the material already covered and the notation already used.
+
+In Sections~\ref{subsec: Discrete-time Generative Model} and~\ref{subsec: Continuous-time Generative Model} we established that when the weighting function is uniform, diffusion-based objectives correspond directly to the ELBO. However, the relationship between the non-uniform weighted diffusion objectives and the ELBO is less well understood, as on the face of it they appear to optimize different things. This has led to the widely held belief that the ELBO (i.e. maximum likelihood) may not be the correct objective to use if the goal is to obtain high-quality samples.
+
+Although weighted diffusion model objectives \textit{appear} markedly different from the ELBO, it turns out that all commonly used diffusion objectives optimize a weighted integral of ELBOs over different noise levels. Furthermore, if the weighting function is monotonic, then the diffusion objective equates to the ELBO under simple Gaussian noise-based data augmentation~\citep{kingma2023understanding}.
+
+As detailed in subsequent sections, different diffusion objectives imply specific weighting functions $w(\cdot)$ of the noise schedule. In the following, we provide a detailed introduction to these concepts, highlighting the most pertinent examples along the way to aid in understanding. To avoid unnecessary repetition, we refer the reader to~\cite{kingma2023understanding} for a detailed breakdown of the most commonly used diffusion loss functions in the literature and the respective derivations of their implied weighting functions.
+%
+\subsubsection{Weighted Diffusion Loss}
+\label{subsubsec: weighted diffusion loss}
+%
+The diffusion objectives used in practice can be understood as a weighted version of the diffusion loss:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}, w) & = \frac{1} {2}\int_{\mathrm{SNR}_{\mathrm{min}}}^{\mathrm{SNR}_{\mathrm{max}}} w(v) \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_v;v\right) \right\|^2_2\right] \mathop{\mathrm{d}v},
+    \\[5pt] & = -\frac{1}{2} \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[ \int_{0}^{1} w(\mathrm{SNR}(t)) \mathrm{SNR}'(t) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \mathop{\mathrm{d}t}\right], \customtag{recall Eq.~\ref{eq: dv_loss}}
+\end{align}
+%
+where $w(v) = w(\mathrm{SNR}(t))$ is a chosen weighting function of the noise schedule. In intuitive terms, the weighting function stipulates the relative importance of each noise level prescribed by the noise schedule. Ideally, we would like to be able to adjust the weighting function such that the model focuses on modelling perceptually important information and ignoring imperceptible bits. In other words, by encouraging our model to focus on some noise levels more than others using a weighting function, we are implicitly specifying a preference for modelling low, mid, and/or high-frequency details at different levels.
+
+When $w(v) = 1$, the diffusion objective is equivalent to maximizing the variational lower bound in Section~\ref{subsubsec: Variational Lower Bound: Top-down HVAE}. As detailed later in Section~\ref{subsec: Understanding Diffusion Objectives}, the invariance to the noise schedule property outlined in Section~\ref{subsubsec: Invariance to the Noise Schedule} still holds for weighted diffusion objectives.
+
+In terms of noise prediction, following Equation~\ref{eq: ct_diff_loss}, the weighted diffusion objective becomes:
+%
+\begin{equation}
+    \mathcal{L}_\infty(\mathbf{x}, w) = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1 w(\mathrm{SNR}(t)) \gamma'_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \mathop{\mathrm{d}t} \right], \label{eq: weighted_ct_loss}
+\end{equation}
+%
+where $w(\mathrm{SNR}(t)) = w(\mathrm{exp}(-\gamma_{\boldsymbol{\eta}}(t)))$, as per the definition of the (learned) noise schedule in Section~\ref{subsubsec: Noise Schedule}.
+
+It turns out that the main difference between most diffusion model objectives boils down to the \textit{implied} weighting function $w(\mathrm{SNR}(t))$ being used~\citep{kingma2021variational,kingma2023understanding}. For instance, \cite{ho2020denoising,song2019generative,song2020improved,nichol2021improved} choose to minimize a so-called \textit{simple} objective of the form:
+%
+\begin{align}
+    \mathcal{L}_{\infty\text{-}\mathrm{simple}}(\mathbf{x}) & \coloneqq \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right],
+\end{align}
+%
+or the analogous discrete-time version
+\begin{align}
+    \mathcal{L}_{T\text{-}\mathrm{simple}}(\mathbf{x}) & \coloneqq \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), i \sim U\{1,T\}} \left[ \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_{t{(i)}};t{(i)}) \right\|^2_2 \right],
+\end{align}
+%
+where $t(i) = i/T$ for $T$ . Contrasting the above with Equation~\ref{eq: weighted_ct_loss}, we can deduce that the $\mathcal{L}_{\infty\text{-}\mathrm{simple}}(\mathbf{x})$ objective above implies the following weighting function:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}, w) & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ w(\mathrm{SNR}(t)) \gamma'_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \frac{1}{2} \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\bigg[ \frac{1}{\gamma'_{\boldsymbol{\eta}}(t)} \gamma'_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \bigg] 
+    \\[5pt] & = \frac{1}{2}\mathcal{L}_{\infty\text{-}\mathrm{simple}}(\mathbf{x}) \implies  w(\mathrm{SNR}(t)) = \frac{1}{\gamma'_{\boldsymbol{\eta}}(t)}.
+\end{align}
+%
+It is worth restating that -- in contrast to VDMs -- the noise schedule specification in most commonly used diffusion models is fixed rather than learned from data, i.e. there are no learnable parameters $\boldsymbol{\eta}$.
+
+Moreover, notice that~\cite{ho2020denoising}'s popular noise prediction objective is an implicitly defined \textit{weighted} objective in image space, where the weighting is a function of the signal-to-noise ratio:
+%
+\begin{align}
+    \mathcal{L}_{\infty\text{-}\mathrm{simple}}(\mathbf{x}) & = \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ \left\| \frac{\mathbf{z}_t - \alpha_t\mathbf{x}}{\sigma_t} - \frac{\mathbf{z}_t - \alpha_t\hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\sigma_t} \right\|^2_2 \right]
+    \\[5pt] & = \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ \frac{\alpha_t^2}{\sigma_t^2} \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ w(\mathrm{SNR}(t)) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right], 
+\end{align}
+%
+recalling that $\mathbf{z}_t = \alpha_t \mathbf{x} + \sigma_t \boldsymbol{\epsilon}, \ \boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})$ by definition (ref. Section \ref{subsec: Gaussian Diffusion Process: Forward Time}). In this case, the implied weighting function of the noise schedule (in image space) is the identity: $w(\mathrm{SNR}(t)) = \mathrm{SNR}(t)$.
+%
+\subsubsection{Noise Schedule Density}
+\label{subsubsec: noise schedule density}
+%
+To remain consistent with~\cite{kingma2023understanding}, let $\lambda = \log(\alpha_\lambda^2 / \sigma^2_\lambda) $ denote the logarithm of the signal-to-noise ratio function $\mathrm{SNR}(t)$, where $\alpha_\lambda^2 =  \mathrm{sigmoid}(\lambda_t)$ and $\sigma_\lambda^2 =  \mathrm{sigmoid}(-\lambda_t)$, for a timestep $t$. Let $f_\lambda : [0,1] \rightarrow \mathbb{R}$ denote the \textit{noise schedule} function, which maps from time $t \in [0,1]$ to the log-SNR $\lambda$, which we may explicitly denote by $\lambda_t$. Like before, the noise schedule function is monotonic thus invertible: $t = f^{-1}_\lambda(\lambda)$, and its endpoints are $\lambda_\mathrm{max} \coloneqq f_\lambda(0)$ and $\lambda_\mathrm{min} \coloneqq f_\lambda(1)$.
+
+We can perform a \textit{change of variables} to define a probability density over noise levels:
+%
+\begin{align}
+    p(\lambda) &= p_T(f^{-1}_\lambda(\lambda)) \left| \dv{f_\lambda^{-1}(\lambda)}{\lambda}(\lambda) \right| 
+    \\[5pt] &= 1 \cdot \left| \dv{t}{\lambda}(\lambda) \right| \label{eq:pdfu} %\customtag{pdf of $p_T$ is 1}
+    \\[5pt] &= -\dv{t}{\lambda}(\lambda), \customtag{as $f_\lambda$ is monotonic} \customlabel{eq: plambda_density}
+\end{align}
+%
+where $p_T = \mathcal{U}(0, 1)$ is a (continuous) uniform distribution over time, which we sample from during training $t \sim p_T$ to compute the log-SNR $\lambda = f_\lambda(t)$. In intuitive terms, the density $p(\lambda)$ describes the relative importance that the model assigns to different noise levels. Note that it can sometimes be beneficial to use different noise schedules for training and sampling~\citep{karras2022elucidating}. Since $f_\lambda$ is strictly monotonically decreasing in time and thus has negative slope, we can simplify the absolute value in Equation~\ref{eq:pdfu} with a negative sign to ensure the density $p(\lambda)$ remains positive.
+
+Nothing that $\mathrm{SNR}(t) = e^\lambda$, the weighted diffusion objective can be trivially expressed in terms of $\lambda$ as:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[\mathrm{SNR}'(t)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right]
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[e^{\lambda} \dv{\lambda}{t}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right] \customtag{chain rule}
+    \\[5pt] & = -\frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), t \sim \mathcal{U}(0,1)} \left[ e^{\lambda} \dv{\lambda}{t} \left\| \frac{\mathbf{z}_t - \sigma_t\boldsymbol{\epsilon}}{\alpha_t} - \frac{\mathbf{z}_t - \sigma_t\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t} \right\|^2_2 \right]
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ e^{\lambda} \dv{\lambda}{t} \frac{\sigma_t^2}{\alpha_t^2}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda_t) \right\|^2_2 \right]  
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ \dv{\lambda}{t} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda_t) \right\|^2_2 \right]. \customtag{since $e^\lambda = \alpha_t^2/\sigma_t^2$} \customlabel{eq: lambda_loss}
+\end{align}
+%
+For complete clarity, the negative sign in front comes from the fact that $\lambda_t = -\gamma_{\boldsymbol{\eta}}(t)$ in the previous parameterization; so the negative sign in front of the original denoising objective in Equation~\ref{eq: dv_loss} no longer cancels out with the $-\gamma'_{\boldsymbol{\eta}}(t)$ term from the noise-prediction derivation in Equation~\ref{eq: negamma}.
+
+As in Section~\ref{subsubsec: Invariance to the Noise Schedule}, we can perform a change of variables to transform our integral w.r.t. to time $t$ into an integral w.r.t. our new variable $\lambda$ -- the \textit{logarithm} of the signal-to-noise ratio:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ \dv{\lambda}{t} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda_t) \right\|^2_2 \right]
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}\left( \sigma_t\left(\mathbf{x}\sqrt{\mathrm{exp}(\lambda_t)} + \boldsymbol{\epsilon}\right) ;t\right) \right\|^2_2 \cdot \dv{\lambda}{t}\mathop{\mathrm{d}t}\right] 
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{f_\lambda(0)}^{f_\lambda(1)}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}\left( \mathbf{z}_\lambda;\lambda\right) \right\|^2_2 \mathop{\mathrm{d}\lambda}\right]
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{f_\lambda(1)}^{f_\lambda(0)}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}\left( \mathbf{z}_\lambda;\lambda\right) \right\|^2_2 \mathop{\mathrm{d}\lambda}\right] \customtag{swap limits}
+    \\[5pt] & = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{\lambda_{\mathrm{min}}}^{\lambda_{\mathrm{max}}}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}\left( \mathbf{z}_\lambda;\lambda\right) \right\|^2_2 \mathop{\mathrm{d}\lambda}\right]. \label{eq:logsnrminmax}
+\end{align}
+%
+
+The weighted version of the objective is then simply
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{\lambda_{\mathrm{min}}}^{\lambda_{\mathrm{max}}} w(\lambda) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}\left( \mathbf{z}_\lambda;\lambda\right) \right\|^2_2 \mathop{\mathrm{d}\lambda}\right], \label{eq: weighted_loss_lambda}
+\end{align}
+%
+which once again shows that the diffusion loss integral does \textit{not} depend directly on the \textit{noise schedule} function $f_\lambda$ except for at its endpoints $\lambda_{\mathrm{min}}, \lambda_{\mathrm{max}}$; and through the choice of weighting function $w(\lambda)$. In other words, given the value of $\lambda$, the value of $t = f_\lambda^{-1}(\lambda)$ is simply irrelevant for evaluating the integral.
+
+Therefore, the only meaningful difference between diffusion objectives is the choice of weighting function used~\citep{kingma2023understanding}.
+
+\subsubsection{Importance Sampling Distribution}
+%
+Although the invariance to the noise schedule still holds under different weighting functions $w(\lambda)$ in Equation~\ref{eq: weighted_loss_lambda}, it does \textit{not} hold for the Monte Carlo estimator we use during training (e.g. Equation~\ref{eq: lambda_loss}), which is based on random samples from our distribution over the time variable $t \sim \mathcal{U}(0,1)$, and Gaussian noise distribution $\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})$. Indeed, the choice of noise schedule affects the \textit{variance} of the Monte Carlo estimator of the diffusion loss. To demonstrate this fact, we first briefly review Importance Sampling (IS); which is a set of Monte Carlo methods used to estimate expectations under a \textit{target} distribution $p$ using a weighted average of samples from an \textit{importance} distribution $q$ of our choosing. 
+% IS is commonly used as a \textit{variance reduction} technique in probabilistic inference.
+
+Let $p(x)$ be a probability density for a random variable $X$, and $f(X)$ be some function we would like to compute the expectation of $\mu = \mathbb{E}_p\left[f(X)\right]$. The basic probability result of IS stipulates that whenever sampling from some target distribution $p(x)$ directly is inefficient or impossible (e.g. we only know $p(x)$ up to a normalizing constant), we can choose any density $q(x)$ to compute $\mu$:   
+%
+\begin{align}
+    \mu = \int f(x)p(x) \mathop{\mathrm{d}x} = \int f(x) p(x) \frac{q(x)}{q(x)} \mathop{\mathrm{d}x} = \mathbb{E}_{q}\left[ \frac{p(X)}{q(X)}f(X)\right],
+\end{align}
+%
+as long as $q(x) > 0$ whenever $f(x)p(x) \neq 0$. Concretely, we can estimate $\mu$ using samples from $q$:
+%
+\begin{align}
+    &&\widehat{\mu} = \frac{1}{N} \sum_{i=1}^N \frac{p(X_i)}{q(X_i)}f(X_i), &&X_1,\dots,X_N \mathop{\sim}\limits^{\mathrm{iid}} q,&&
+\end{align}
+%
+where, by the weak law of large numbers, $\widehat{\mu} \xrightarrow{P} \mu$ when $N \rightarrow \infty$.
+
+Now, observe that it is possible to rewrite the weighted diffusion objective above (i.e. Equation~\ref{eq: lambda_loss}) such that the noise schedule density $p(\lambda)$ is revealed to be an \textit{importance sampling} distribution:
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ w(\lambda) \cdot \dv{\lambda}{t} \cdot \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda) \right\|^2_2 \right] 
+    \\[5pt] & = -\int_0^1 \left(\frac{1}{2}\int \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda) \right\|^2_2 p(\boldsymbol{\epsilon})\mathop{\mathrm{d}\boldsymbol{\epsilon}}\right) w(\lambda) \dv{\lambda}{t} \mathop{\mathrm{d}t}
+    \\[5pt] & \eqqcolon -\int_0^1 h(t; \mathbf{x}) w(\lambda)\dv{\lambda}{t} \mathop{\mathrm{d}t} \customtag{define $h(\cdot)$ for brevity}
+    \\[5pt] & = \int_{f_\lambda(1)}^{f_\lambda(0)} h(\lambda; \mathbf{x}) w(\lambda)\mathop{\mathrm{d}\lambda} \customtag{change-of-variables}
+    \\[5pt] & = \int_{f_\lambda(1)}^{f_\lambda(0)} h(\lambda; \mathbf{x}) w(\lambda) \frac{p(\lambda)}{p(\lambda)} \mathop{\mathrm{d}\lambda} \customtag{introduce IS distribution}
+    \\[5pt] & = \mathbb{E}_{\lambda \sim p(\lambda)}\left[ \frac{w(\lambda)}{p(\lambda)} h(\lambda;\mathbf{x})\right]
+    \\[5pt] & = \mathbb{E}_{\lambda \sim p(\lambda)}\left[ \frac{w(\lambda)}{p(\lambda)} \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})} \left[\frac{1}{2}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2\right]\right]
+    \\[5pt] & = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),\lambda \sim p(\lambda)}\left[ \frac{w(\lambda)}{p(\lambda)} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2\right]. \label{eq: is_loss}
+\end{align}
+%
+It is clear then that different choices of the noise schedule affect the variance of the Monte Carlo estimator of the diffusion loss because the noise schedule density $p(\lambda)$ acts as an importance sampling distribution. Importantly, judicious choices of the importance distribution can substantially increase the efficiency of Monte Carlo algorithms for numerically evaluating integrals.
+
+A natural question to ask at this stage is how one may select $p(\lambda)$, such that a variance reduction is obtained. Variance reduction is obtained if and only if the difference between the variance of the original estimator $h(\lambda; \mathbf{x})$ and the importance sampling estimator $\hat{h}(\lambda; \mathbf{x}) \coloneqq h(\lambda;\mathbf{x})w(\lambda) / p(\lambda)$ is strictly positive. Formally, the following expression should evaluate to a value greater than $0$:
+%
+\begin{align}
+    \mathbb{V}_w(h(\lambda; \mathbf{x})) - \mathbb{V}_p(\hat{h}(\lambda; \mathbf{x})) & = \int h^2(\lambda;\mathbf{x})w(\lambda)\mathop{\mathrm{d}\lambda} - \left(\int h(\lambda;\mathbf{x})w(\lambda) \mathop{\mathrm{d}\lambda}\right)^2
+    \\[5pt] & \qquad - \left(\int \left(\frac{h(\lambda;\mathbf{x})w(\lambda)}{p(\lambda)}\right)^2 p(\lambda)\mathop{\mathrm{d}\lambda} - \left(\int \frac{h(\lambda;\mathbf{x})w(\lambda)}{p(\lambda)} p(\lambda) \mathop{\mathrm{d}\lambda}\right)^2\right)
+    \\[5pt] & = \int h^2(\lambda;\mathbf{x})w(\lambda)\mathop{\mathrm{d}\lambda} - \left(\int h(\lambda;\mathbf{x})w(\lambda) \mathop{\mathrm{d}\lambda}\right)^2 
+    \\[5pt] & \qquad - \int \hat{h}^2(\lambda; \mathbf{x}) p(\lambda)\mathop{\mathrm{d}\lambda} + \left(\int h(\lambda;\mathbf{x})w(\lambda) \mathop{\mathrm{d}\lambda}\right)^2 
+    \customtag{cancel terms}
+    % \\[5pt] & = \int h^2(\lambda;\mathbf{x})w(\lambda)\mathop{\mathrm{d}\lambda} - \int \hat{h}^2(\lambda; \mathbf{x}) p(\lambda)\mathop{\mathrm{d}\lambda}
+    \\[5pt] & = \int h^2(\lambda;\mathbf{x})w(\lambda) -\frac{h^2(\lambda;\mathbf{x})w^2(\lambda)}{p(\lambda)} \mathop{\mathrm{d}\lambda}
+    \customtag{substitute out $\hat{h}$}
+    % \\[5pt] & = \int h^2(\lambda;\mathbf{x})w(\lambda) \left(1 -\frac{w(\lambda)}{p(\lambda)} \right)\mathop{\mathrm{d}\lambda}.
+    \\[5pt] & = \mathbb{E}_{w}\left[\left(1 -\frac{w(\lambda)}{p(\lambda)} \right)  h^2(\lambda;\mathbf{x}) \right],
+\end{align}
+%
+revealing a concise expression that may be useful for practical evaluation. It is a well-known result that the optimal IS distribution is of the form $p^*(\lambda) \propto \lvert h(\lambda);\mathbf{x} \rvert w(\lambda)$, since it minimizes the variance of the IS estimator~\citep{wasserman2004all}. However, this result is mostly of theoretical interest rather then practical, as it requires knowledge of the integral we are aiming to estimate in the first place.
+
+Furthermore, our current setting is somewhat different from the type of problem one would typically attack with importance sampling, as here we get to choose both distributions involved:
+%
+\begin{enumerate}[(i)]
+    \item The weighting function $w(\lambda)$ acts as the \textit{target} distribution. It stipulates the relative importance of each noise level and ensures the model is focusing on perceptually important information. However, $w(\lambda)$ may not be a valid probability density as the most commonly used (implied) weighting functions do not integrate to 1 over their support.
+    \item The \textit{importance} distribution is the noise schedule density $p(\lambda)$, which specifies the noise schedule of the Gaussian diffusion process.
+\end{enumerate}
+%
+This means we technically ought to retune the noise schedule for different choices of weighting function
+% , which is awkward. 
+To avoid this,~\cite{kingma2023understanding} propose an adaptive noise schedule where:
+%
+\begin{align}
+    p(\lambda) \propto \mathbb{E}_{\mathbf{x} \sim \mathcal{D}, \boldsymbol{\epsilon} \sim \mathcal{N}(0, \mathbf{I})} \left[ w(\lambda) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2 \right],
+\end{align}
+%
+thereby ensuring that the magnitude of the loss (Equation~\ref{eq: is_loss}) is approximately invariant to $\lambda$, and spread evenly across time $t$. This approach is often found to speed up optimization significantly. Both~\cite{song2021maximum} and ~\cite{vahdat2021score} have also explored variance reduction techniques for (latent) diffusion model objectives from a score-based diffusion perspective.
+%
+\subsubsection{ELBO with Data Augmentation}
+\label{subsubsec: elbo with data aug}
+%
+In this section, we dissect the main result presented by~\cite{kingma2023understanding}; that when the weighting function of the diffusion loss is monotonic, the resulting objective is equivalent to the ELBO under simple data augmentation using Gaussian additive noise. We provide an instructive derivation of this result, discuss its implications, and present an extension to the setting of non-monotonic weighting functions.
+
+The general goal is to inspect the behaviour of the weighted diffusion objective across time $t$, and manipulate the expression such that we end up with an expectation under a valid probability distribution specified by the weighting function $w(\lambda)$. This then allows us to examine the integrand and reveal that it corresponds to the expected negative ELBO of noise-perturbed data.
+
+To that end, let $q(\mathbf{z}_{t:1} \mid \mathbf{x}) \coloneqq q(\mathbf{z}_{t},\mathbf{z}_{t + \mathop{\mathrm{d}t}},\dots,\mathbf{z}_{1} \mid \mathbf{x})$ denote the joint distribution of the posterior (forward process) for a subset of timesteps: $\{t,t + \mathop{\mathrm{d}t},\dots,1\}$, where $t > 0$ and $\mathop{\mathrm{d}t}$ denotes an infinitesimal change in time. Analogously, let $p(\mathbf{z}_{t:1})$ denote the prior (generative model) for the same subset of timesteps. 
+
+The KL divergence of the joint posterior $q(\mathbf{z}_{t:1} \mid \mathbf{x})$ from the joint prior $p(\mathbf{z}_{t:1})$ is given by
+%
+\begin{align}
+    \mathcal{L}(t;\mathbf{x}) &\coloneqq D_{\mathrm{KL}}(q(\mathbf{z}_{t:1} \mid \mathbf{x}) \parallel p(\mathbf{z}_{t:1}))
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[-\int_{f_\lambda(t)}^{f_\lambda(1)} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2 \mathop{\mathrm{d}\lambda} \right]. 
+    \customtag{from Eq.~\ref{eq:logsnrminmax}}
+    % \customtag{from Eq.~\ref{eq: weighted_loss_lambda}}
+\end{align}
+%
+Next, we rearrange and differentiate under the integral sign w.r.t. time $t$ to give:
+%
+\begin{align}
+    \dv{\mathcal{L}(t;\mathbf{x})}{t} & = \dv{}{t} \left(\int_{f_\lambda(t)}^{f_\lambda(1)}-\frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2 \right] \mathop{\mathrm{d}\lambda} \right)
+    \\[5pt] & \eqqcolon \dv{}{t} \left(\int_{f_\lambda(t)}^{f_\lambda(1)}h(\lambda;\mathbf{x}) \mathop{\mathrm{d}\lambda} \right)
+    \\[5pt] & = \dv{}{t} \Big[F(f_\lambda(1)) - F(f_\lambda(t)) \Big]\customtag{$F$ is an antiderivative of $h$}
+    \\[5pt] & = 0 - F'(f_\lambda(t)) \cdot f'_\lambda(t) \customtag{chain rule}
+    \\[5pt] & = -F'(\lambda) \cdot \dv{\lambda}{t} \customtag{recall $\lambda = f_\lambda(t)$}
+    \\[5pt] & = \frac{1}{2}\dv{\lambda}{t} \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_\lambda; \lambda) \right\|^2_2 \right], \customtag{since $F'(\lambda) = h(\lambda;\mathbf{x})$}
+\end{align}
+%
+which allows us to rewrite the weighted diffusion objective by substituting in the above result:
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[ w(\lambda_t) \cdot \dv{\lambda}{t} \cdot \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda) \right\|^2_2 \right] 
+    \\[5pt] & = \mathbb{E}_{t \sim \mathcal{U}(0,1)}\left[ w(\lambda_t) \cdot -\frac{1} {2} \dv{\lambda}{t} \mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda) \right\|^2_2 \right] \right]
+    \\[5pt] & = \mathbb{E}_{t \sim \mathcal{U}(0,1)}\left[-\dv{\mathcal{L}(t;\mathbf{x})}{t} w(\lambda_t) \right]. \customtag{time derivative}
+\end{align}
+%
+After some simple manipulation, we can see that the resulting expression is an expectation of the time derivative of the joint KL divergence $\mathcal{L}(t;\mathbf{x})$, weighted by the weighting function $w(\lambda_t)$. This result is not particularly interesting or surprising by itself, but it enables the next step; using integration by parts to turn the above expression into an expectation under a valid probability distribution specified by the weighting function. Recall that the formula for integration by parts is given by:
+%
+\begin{align}
+   \int_a^b u(t) v'(t) \mathop{\mathrm{d}t} = u(b) v(b) - u(a) v(a) - \int_a^b u'(t) v(t) \mathop{\mathrm{d}t}.
+ \end{align}
+%
+Setting $u(t) = w(\lambda_t)$ and $v'(t) = \mathrm{d}/\mathrm{d}t \ \mathcal{L}(t;\mathbf{x})$ then gives:
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = \int_0^1 -\dv{\mathcal{L}(t;\mathbf{x})}{t} w(\lambda_t) \mathop{\mathrm{d}t}
+    \\[5pt] & = -\left(w(\lambda_1)\mathcal{L}(1;\mathbf{x})\mathop{-} w(\lambda_0)\mathcal{L}(0;\mathbf{x}) - \int_0^1 \dv{w(\lambda_t)}{t}\mathcal{L}(t;\mathbf{x})  \mathop{\mathrm{d}t} \right)
+    \\[5pt] & = \int_0^1 \dv{w(\lambda_t)}{t}\mathcal{L}(t;\mathbf{x})  \mathop{\mathrm{d}t} \mathop{+} w(\lambda_0)\mathcal{L}(0;\mathbf{x})\mathop{-} w(\lambda_1)\mathcal{L}(1;\mathbf{x}) 
+    \\[5pt] & = \int_0^1 \dv{w(\lambda_t)}{t}\mathcal{L}(t;\mathbf{x})  \mathop{\mathrm{d}t} \mathop{+} c, \customtag{absorb constants into $c$} \customlabel{eq: time_derivative_c}
+\end{align}
+%
+where $c$ is a small constant for two simple reasons: 
+%
+\begin{enumerate}[(i)]
+    \item $w(\lambda_0)\mathcal{L}(0;\mathbf{x}) = w(\lambda_{\mathrm{max}})D_{\mathrm{KL}}(q(\mathbf{z}_{0:1} \mid \mathbf{x}) \parallel p(\mathbf{z}_{0:1}))$ is small due to the weighting function acting on $\lambda_{\mathrm{max}}$ always being very small by construction~\citep{kingma2023understanding};
+    \item $\mathop{-} w(\lambda_1)\mathcal{L}(1;\mathbf{x}) = \mathop{-} w(\lambda_{\mathrm{min}})D_{\mathrm{KL}}(q(\mathbf{z}_{1} \mid \mathbf{x}) \parallel p(\mathbf{z}_{1}))$ includes the KL between the posterior of the noisiest latent $\mathbf{z}_1$ and the prior, which is both independent of the parameters $\boldsymbol{\theta}$ of the model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; \lambda)$, and very close to $0$ for a well-specified forward diffusion process.
+\end{enumerate}
+%
+
+The astute reader may notice that the derivative term $\mathrm{d}/\mathrm{d}t \ w(\lambda_t)$ in Equation~\ref{eq: time_derivative_c} is a valid probability density function (PDF) specified by the weighting function, so long as $w(\lambda_t)$ is monotonically increasing w.r.t. time $t$, and $w(\lambda_{t=1}) = 1$. The proof is straightforward: by the Fundamental Theorem of Calculus, the PDF $f(x)$ of a random variable $X$ is obtained by differentiating the cumulative distribution function (CDF) $F(x)$, that is: $f(x) = \mathrm{d}/\mathrm{d}x \ F(x)$, where $F : \mathbb{R} \rightarrow [0,1]$, $\lim_{x\rightarrow-\infty}F(x)=0$ and $\lim_{x\rightarrow\infty}F(x)=1$. 
+
+\newpage
+Therefore, in our context, $w$ is a valid CDF if it satisfies three conditions:
+%
+\begin{flalign*}
+    \qquad \mathrm{(i)} \ \ & w : \mathbb{R} \to [0, 1] \customtag{maps the real line to $[0,1]$}
+    \qquad &\\[2pt] \mathrm{(ii)} \ \ & t > t - \mathrm{d}t \implies w(\lambda_t) \geq w(\lambda_{t - \mathrm{d}t}), \ \forall t \in [0,1] \customtag{non-decreasing w.r.t. time $t$}
+    \qquad &\\[2pt] \mathrm{(iii)} \ \ & \lim\limits_{t \to 0} w(\lambda_t) = 0, \ \mathrm{and} \ \lim\limits_{t \to 1} w(\lambda_t) = 1. \customtag{$w$ is normalized}
+\end{flalign*}
+%
+If the above holds, we can define a valid probability distribution $p_w(t)$ specified by the weighting function:
+%
+\begin{align}
+    &&p_w(t) \coloneqq \dv{w(\lambda_t)}{t}, && \mathrm{where} && w(\lambda_t) = \int_0^{\lambda_t} p_w(t) \mathop{\mathrm{d}t},&&
+\end{align}
+%
+with support on the range $[0,1]$, thus $\int_0^1 p_w(t) \mathop{\mathrm{d}t} = 1$.
+
+This then permits us to rewrite the diffusion loss as an expectation under $p_w(t)$ by substituting:
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = \int_0^1 \dv{w(\lambda_t)}{t}\mathcal{L}(t;\mathbf{x})  \mathop{\mathrm{d}t} \mathop{+} c \customtag{from Eq.~\ref{eq: time_derivative_c}}
+    \\[5pt] & = \mathbb{E}_{t \sim p_w(t)}\left[\mathcal{L}(t;\mathbf{x})\right] \mathop{+} c. \label{eq: pwt_expected_loss}
+\end{align}
+%
+
+The final step is to show that the joint KL divergence $\mathcal{L}(t;\mathbf{x})$ for any subset of timesteps $\{t, t + \mathop{\mathrm{d}t}, \dots, 1\}$ decomposes into the expected negative ELBO of noisy data $\mathbf{z}_t \sim q(\mathbf{z}_t \mid \mathbf{x})$ at any particular timestep $t$:
+%
+\begin{align}
+    \mathcal{L}(t;\mathbf{x}) & = D_{\mathrm{KL}}(q(\mathbf{z}_{t:1} \mid \mathbf{x}) \parallel p(\mathbf{z}_{t:1}))
+    \\[5pt] & = \int q(\mathbf{z}_{t:1} \mid \mathbf{x}) \log \frac{q(\mathbf{z}_{t:1} \mid \mathbf{x})}{p(\mathbf{z}_{t:1})}\mathop{\mathrm{d}\mathbf{z}_{t:1}}
+    \\[5pt] & = \int q(\mathbf{z}_{t} \mid \mathbf{x})q(\mathbf{z}_{t + \mathrm{d}t:1} \mid \mathbf{x}) \log \frac{q(\mathbf{z}_{t} \mid  \mathbf{x})q(\mathbf{z}_{t + \mathrm{d}t:1} \mid \mathbf{x})}{p(\mathbf{z}_{t} \mid \mathbf{z}_{t+\mathrm{d}t})p(\mathbf{z}_{t+\mathrm{d}t:1})}\mathop{\mathrm{d}\mathbf{z}_{t:1}} \customtag{factor the joint}
+    \\[5pt] & = \mathbb{E}_{q(\mathbf{z}_{t} \mid  \mathbf{x})} \left[\mathbb{E}_{q(\mathbf{z}_{t + \mathrm{d}t:1} \mid \mathbf{x})} \left[ \log \frac{q(\mathbf{z}_{t + \mathrm{d}t:1} \mid \mathbf{x})}{p(\mathbf{z}_{t+\mathrm{d}t:1})} - \log p(\mathbf{z}_{t} \mid \mathbf{z}_{t+\mathrm{d}t}) \right]\right] 
+    % \nonumber
+    % \\[5pt] & \qquad
+    + \mathbb{E}_{q(\mathbf{z}_{t} \mid \mathbf{x})} \left[ \log q(\mathbf{z}_{t} \mid \mathbf{x}) \right] 
+    % \customtag{split expectation}
+    \\[5pt] & = \mathbb{E}_{q(\mathbf{z}_{t} \mid  \mathbf{x})} \left[\mathbb{E}_{q(\mathbf{z}_{t + \mathrm{d}t} \mid \mathbf{x})} \left[-\log p(\mathbf{z}_{t} \mid \mathbf{z}_{t+\mathrm{d}t})\right] + D_\mathrm{KL}(q(\mathbf{z}_{t + \mathrm{d}t:1} \mid \mathbf{x}) \parallel p(\mathbf{z}_{t+\mathrm{d}t:1})) \right] 
+    \nonumber
+    \\[5pt] & \qquad
+    - \mathcal{H}(q(\mathbf{z}_{t} \mid \mathbf{x})) 
+    \customtag{constant entropy term $\mathcal{H}(\cdot)$}
+    \\[5pt] & = \mathbb{E}_{q(\mathbf{z}_{t} \mid  \mathbf{x})} \left[ -\mathrm{ELBO}_t (\mathbf{z}_t)\right] - \mathcal{H}(q(\mathbf{z}_{t} \mid \mathbf{x})). \customtag{expected free energy}
+\end{align}
+%
+As shown, factoring the joint distributions into infinitesimal transitions between $\mathbf{z}_t$ and $\mathbf{z}_{t + \mathrm{d}t}$ reveals an expected variational free energy term (negative ELBO), which is an upper bound on the negative log-likelihood of noisy data: $-\mathrm{ELBO}_t(\mathbf{z}_t) \geq -\log p(\mathbf{z}_t)$, where $\mathbf{z}_t \sim q(\mathbf{z}_t \mid \mathbf{x})$ for any timestep $t$. The entropy term $\mathcal{H}(q(\mathbf{z}_{t} \mid \mathbf{x}))$ is constant since our forward process is fixed, i.e. it is a Gaussian diffusion.
+
+Finally, substituting the above result into the (expected) weighted diffusion loss gives
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = \mathbb{E}_{p_w(t)} \left[\mathcal{L}(t;\mathbf{x})\right] + c \customtag{from Equation~\ref{eq: pwt_expected_loss}}
+    \\[5pt] & = \mathbb{E}_{p_w(t)} \left[\mathbb{E}_{q(\mathbf{z}_{t} \mid \mathbf{x})} \left[ -\mathrm{ELBO}_t (\mathbf{z}_t)\right] - \mathcal{H}(q(\mathbf{z}_{t} \mid \mathbf{x}))\right] + c \customtag{substitute}
+    \\[5pt] & = -\mathbb{E}_{p_w(t),q(\mathbf{z}_{t} \mid  \mathbf{x})} \left[ \mathrm{ELBO}_t (\mathbf{z}_t)\right] + c \customtag{absorb entropy constant}
+    \\[5pt] & \geq -\mathbb{E}_{p_w(t),q(\mathbf{z}_{t} \mid  \mathbf{x})} \left[ \log p(\mathbf{z}_t) \right] + c, \customtag{noisy data log-likelihood}
+\end{align}
+%
+which proves that when the weighting function $w(\lambda_t)$ is monotonically increasing w.r.t. time $t$, diffusion objectives are equivalent to the ELBO under simple data augmentation using Gaussian additive noise. To be clear, the Gaussian additive noise comes from the fact that the forward diffusion specification is linear Gaussian, and as such, each $\mathbf{z}_t \sim q(\mathbf{z}_t \mid \mathbf{x})$ is simply a noisy version of the data $\mathbf{x}$. The distribution $p_w(t)$ acts as a sort of data augmentation kernel, specifying the importance of different noise levels. It is worth noting that this type of data augmentation setup resembles distribution augmentation (DistAug) and distribution smoothing methods~\citep{meng2020improved,jun2020distribution}, which have previously been shown to improve the sample quality of autoregressive generative models.
+
+Now going back to Equation~\ref{eq: time_derivative_c}, we see that the diffusion loss is a weighted integral of ELBOs:
+%
+\begin{align}
+    \mathcal{L}_w(\mathbf{x}) & = \int_0^1 \mathcal{L}(t;\mathbf{x}) \dv{w(\lambda_t)}{t} \mathop{\mathrm{d}t} \mathop{+} c = \int_0^1 \mathbb{E}_{q(\mathbf{z}_t \mid \mathbf{x})}\left[-\mathrm{ELBO}_t(\mathbf{z}_t)\right]  \mathop{\mathrm{d}w(\lambda_t)} \mathop{+} c, \label{eq: weighted_integral_elbo}
+\end{align}
+%
+since $\mathcal{L}(t;\mathbf{x})$ equates to the expected negative ELBO for noise-perturbed data $\mathbf{z}_t \sim q(\mathbf{z}_t \mid \mathbf{x})$ as explained above, and the $\mathop{\mathrm{d}w(\lambda_t)}$ term simply weights the ELBO at each noise level.
+
+\paragraph{Non-monotonic Weighting.} Several works have observed impressive synthesis results when using non-monotonic weighting functions~\citep{nichol2021improved,karras2022elucidating,choi2022perception,hang2023efficient}. What are the theoretical implications of using such weighting functions? 
+
+Looking again at Equation~\ref{eq: weighted_integral_elbo}, we observe that regardless of the weighting function, diffusion objectives boil down to a weighted integral of ELBOs. However, if the weighting function is non-monotonic (thus $w$ is not a valid CDF) then the derivative term $\mathrm{d}/\mathrm{d}t \ w(\lambda_t)$ will be negative for some points in time, meaning we end up \textit{minimizing} the ELBO at those noise levels rather than maximizing it! This is somewhat inconvenient in light of the practical success of non-monotonic weighting functions, and seems to reaffirm the widespread belief that maximum likelihood may not be the appropriate objective for generating high-quality samples. One sensible explanation for this success is that the non-monotonic weighting functions sacrifice some modes of the likelihood in exchange for better perceptual synthesis. Indeed, the majority of bits in images are allocated to imperceptible details and can therefore be largely ignored if what we care about is perceptual quality. This aspect was discussed by~\cite{ho2020denoising}; they found that although their diffusion models were not competitive with the state-of-the-art likelihood-based models in terms of lossless codelengths, the samples were of high quality nonetheless.
+
+With that said, \cite{kingma2023understanding} showed that contrary to popular belief, likelihood maximization (i.e. maximizing the ELBO) and high-quality image synthesis are not mutually exclusive in diffusion models. They were able to achieve state-of-the-art FID~\citep{heusel2017gans}/Inception~\citep{salimans2016improved} scores on the high-resolution ImageNet benchmark using \textit{monotonic} weighting functions and some practical/architectural improvements proposed by~\cite{pmlr-v202-hoogeboom23a}. As we have learned, optimizing the weighted diffusion loss with a monotonic weighting function is equivalent to maximizing the ELBO under simple data augmentation using Gaussian additive noise.

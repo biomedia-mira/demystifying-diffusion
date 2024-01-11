@@ -1,0 +1,212 @@
+\newpage
+\subsection{Reverse Process: Continuous-Time Generative Model}
+\label{subsec: Continuous-time Generative Model}
+%
+A continuous-time variational diffusion model ($T \to \infty$) corresponds to the infinitely deep limit of a hierarchical VAE, when the diffusion process (noise schedule) is learned rather than fixed. As previously alluded to, the extension of diffusion models to continuous-time has been proven to be advantageous by various authors~\citep{song2021scorebased,kingma2021variational,huang2021variational,vahdat2021score}.
+
+In this section, we begin by explaining why using a continuous-time VLB is strictly preferable over a discrete-time version, and provide detailed derivations of its estimator in terms of a denoising and noise-prediction model. We then explain why the continuous-time VLB is invariant to the noise schedule of the forward diffusion process, except for at its endpoints. In other words, the VLB is unaffected by the shape of the signal-to-noise ratio function $\mathrm{SNR}(t)$ between $t=0$ and $t=1$. Lastly, we explain how this invariance holds for models that optimize a \textit{weighted} diffusion loss rather than the standard VLB.
+
+Note that, due to the shared notation between discrete and continuous-time models introduced in Section~\ref{subsec: Discrete-time Generative Model}, the various derivations and results therein (e.g. for $p(\mathbf{z}_s \mid \mathbf{z}_t)$) are equally applicable for the continuous-time version presented in this section.
+%
+\subsubsection{On Infinite Depth}
+\label{subsubsec: on infinite depth}
+%
+\cite{kingma2021variational} showed that doubling the number of timesteps $T$ always improves the diffusion loss, which suggests we should optimize a continuous-time VLB, with $T \rightarrow \infty$. This finding is straightforward to verify; we start by recalling that the discrete-time diffusion loss using $T$ steps is given by:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[ \sum_{i=1}^T\left( \mathrm{SNR}(s(i)) - \mathrm{SNR}(t(i))\right)
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t(i)};t(i)) \right\|^2_2 \right], \label{eq: diff_lz}
+\end{align}
+%
+where $s(i) = (i - 1) / T$ and $t(i) = i / T$. To double the number of timesteps $T$, we can introduce a new symbol $t'(i)$ to represent an interpolation between $s(i)$ and $t(i)$, defined as:
+%
+\begin{align}
+    t'(i) = \frac{s(i) + t(i)}{2} = \frac{1}{2} \left(\frac{i-1}{T} + \frac{i}{T}\right) = \frac{i-0.5}{T} = t(i) - \frac{0.5}{T}.
+\end{align}
+%
+Using shorthand notation $s$, $t$ and $t'$ for $s(i)$, $t(i)$ and $t'(i)$; the diffusion loss with $T$ timesteps can be written equivalently to Equation~\ref{eq: diff_lz} as:
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[ \sum_{i=1}^T\left( \mathrm{SNR}(s) - \mathrm{SNR}(t') + \mathrm{SNR}(t') - \mathrm{SNR}(t)\right)
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 \right],
+\end{align}
+%
+whereas the new diffusion loss with $2T$ timesteps is given by:
+%
+\begin{align}
+    \mathcal{L}_{2T}(\mathbf{x}) = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\Bigg[ \sum_{i=1}^T & \left(\mathrm{SNR}(s) - \mathrm{SNR}(t')\right)
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t'};t') \right\|^2_2 
+    % \\[5pt] & +
+    % \sum_{i=1}^T
+    +\left( \mathrm{SNR}(t') - \mathrm{SNR}(t)\right)
+    \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 
+    \Bigg].
+\end{align}
+%
+If we then subtract the two losses and cancel out common terms we get the following:
+%
+\begin{align}
+    \hspace{-20pt} \mathcal{L}_{2T}(\mathbf{x}) - \mathcal{L}_{T}(\mathbf{x}) = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\Bigg[ \sum_{i=1}^{T} &\Big\{\mathrm{SNR}(s) \left\| \mathbf{x} - 
+    \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t'};t') \right\|^2_2 - \mathrm{SNR}(t') \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t'};t') \right\|^2_2 \nonumber
+    \\[5pt] & + \cancel{\mathrm{SNR}(t') \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2} - \cancel{\mathrm{SNR}(t) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 \Big\}} \nonumber
+    \\[5pt] & \hspace{-20pt} - \Bigg( 
+    \sum_{i=1}^{T} \mathrm{SNR}(s) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 - \mathrm{SNR}(t') \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 \nonumber
+    \\[5pt] & + \cancel{\mathrm{SNR}(t') \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2} - \cancel{\mathrm{SNR}(t) \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2}
+    \Bigg) \Bigg]
+    \\[5pt] & \hspace{-67pt} = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[
+    \sum_{i=1}^T \left( \mathrm{SNR}(s) - \mathrm{SNR}(t') \right) \left(\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t'};t') \right\|^2_2 - \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}(\mathbf{z}_{t};t) \right\|^2_2 \right) \right]. \label{eq: 2t_loss}
+\end{align}
+%
+We can use Equation~\ref{eq: 2t_loss} to justify optimizing a continuous-time objective. Since $t' < t$, the prediction error term with $\mathbf{z}_{t'}$ will be lower than the one with $\mathbf{z}_{t}$, as $\mathbf{z}_{t'}$ is a less noisy version of $\mathbf{x}$ from earlier on in the diffusion process. In other words, it is always easier to predict $\mathbf{x}$ from $\mathbf{z}_{t'}$ than from $\mathbf{z}_{t}$, given an adequately trained model. More formally, doubling the number of timesteps $T$ always improves the VLB:
+%
+\begin{align}
+    \mathcal{L}_{2T}(\mathbf{x}) - \mathcal{L}_{T}(\mathbf{x}) < 0 \implies \mathrm{VLB}_{2T}(\mathbf{x}) > \mathrm{VLB}_{T}(\mathbf{x}), \ \forall T \in \mathbb{N}^{+}.
+\end{align}
+%
+Thus it is strictly advantageous to optimize a continuous-time VLB, where $T \rightarrow \infty$ and time $t$ is treated as continuous rather than discrete.
+%
+\subsubsection{Monte Carlo Estimator of $\mathcal{L}_\infty(\mathbf{x})$}
+\label{subsubsec: Monte Carlo Estimator of linfty}
+%
+To arrive at an unbiased Monte Carlo estimator of the continuous-time diffusion loss $\mathcal{L}_\infty(\mathbf{x})$, we can first take the discrete-time version and substitute in the time segment width $\tau = 1/T$ to reveal:  
+%
+\begin{align}
+    \mathcal{L}_T(\mathbf{x}) & = \frac{T}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\left(\mathrm{SNR}(s) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 \right]
+    \\[5pt] & = \frac{1}{2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[T \left(\mathrm{SNR}\left(t - \frac{1}{T}\right) - \mathrm{SNR}(t)\right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 \right] 
+    \customtag{since $s = (i - 1)/T$}
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),i \sim U{\{1,T\}}}\left[\frac{\mathrm{SNR}(t - \tau) - \mathrm{SNR}(t)}{\tau}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 \right], 
+    \customtag{substitute $\tau = 1/T$} 
+    \customlabel{eq: bckwd}
+\end{align}
+%
+again using the shorthand notation $s$ and $t$ for $s(i) = (i-1)/T$ and $t(i) = i/T$, respectively. 
+
+The constant inside the expectation in Equation~\ref{eq: bckwd} is readily recognized as the (negative) \textit{backward difference} numerical approximation to the derivative of $\mathrm{SNR}(t)$ w.r.t $t$, since:
+%
+\begin{align}
+    \dv{\mathop{\mathrm{SNR}(t)}}{t} & = \lim_{\tau \to 0} \frac{\mathrm{SNR}(t + \tau) - \mathrm{SNR}(t)}{\tau} \customtag{forward difference}
+    \\[5pt] & = \lim_{\tau \to 0} \frac{\mathrm{SNR}(t) - \mathrm{SNR}(t - \tau)}{\tau}, \customtag{backward difference} 
+\end{align}
+%
+and therefore
+%
+\begin{align}
+     \lim_{\tau \to 0} \frac{\mathrm{SNR}(t - \tau) - \mathrm{SNR}(t)}{\tau} & = \lim_{\tau \to 0} -\frac{\mathrm{SNR}(t) - \mathrm{SNR}(t - \tau)}{\tau} \\[5pt] & = -\dv{\mathop{\mathrm{SNR}(t)}}{t}.
+\end{align}
+%
+Thus taking the limit as $T \to \infty$ of the discrete-time diffusion loss we get
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = \lim_{T \to \infty}\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\sum_{i=1}^T\left(\mathrm{SNR}(s) - \mathrm{SNR}(t) \right)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_{t};t) \right\|^2_2 \right]
+    \\[5pt] & = \lim_{T \to \infty}\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}), i \sim U\{1,T\}}\left[\frac{\mathrm{SNR}(t - \tau) - \mathrm{SNR}(t)}{\tau}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_{t};t) \right\|^2_2 \right]
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{0}^1-\dv{\mathop{\mathrm{SNR}(t)}}{t}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 \mathop{\mathrm{d} t} \right] \label{eq: t_int}
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[\mathrm{SNR}'(t)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 \right]. \label{eq: dv_loss}
+\end{align}
+%
+We can express the above in terms of the noise-prediction model $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t; t)$ as follows:
+%
+\begin{align}
+    \mathrm{SNR}'(t)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}( \mathbf{z}_t;t) \right\|^2_2 & = \mathrm{SNR}'(t)\left\| \frac{\mathbf{z}_t - \sigma_t \boldsymbol{\epsilon}}{\alpha_t} - \frac{\mathbf{z}_t - \sigma_t \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)}{\alpha_t} \right\|^2_2
+    \\[5pt] & = \mathrm{SNR}'(t) \left\| \frac{\sigma_t}{\alpha_t} \left(\boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)\right) \right\|^2_2 \customtag{cancel $\mathbf{z}_t$ terms and factor}
+    \\[5pt] & = \mathrm{SNR}'(t) \cdot \frac{\sigma_t^2}{\alpha_t^2}\left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2
+    \\[5pt] & = \mathrm{SNR}'(t) \cdot \mathrm{SNR}(t)^{-1} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \customtag{$\mathrm{SNR}(t) = \alpha_t^2 / \sigma_t^2$}
+    \\[5pt] & = \mathrm{SNR}(t)^{-1} \cdot \dv{t}e^{-\gamma_{\boldsymbol{\eta}}(t)} \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 
+    \\[5pt] & = \mathrm{SNR}(t)^{-1} \cdot e^{-\gamma_{\boldsymbol{\eta}}(t)} \cdot -\dv{t}\gamma_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \customtag{chain rule}
+    \\[5pt] & = \frac{1}{e^{-\gamma_{\boldsymbol{\eta}}(t)}} \cdot e^{-\gamma_{\boldsymbol{\eta}}(t)} \cdot -\dv{t}\gamma_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \customtag{$\mathrm{SNR}(t) = e^{-\gamma_{\boldsymbol{\eta}}(t)}$}
+    \\[5pt] & = -\gamma'_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2, \label{eq: negamma}
+\end{align}
+%
+where the simplified form of $\mathrm{SNR}(t) = \exp(-\gamma_{\boldsymbol{\eta}}(t))$ derived in Equation~\ref{eq: snrt} was used to arrive at the final result. Plugging the final expression back into the expected loss in Equation~\ref{eq: dv_loss} we get
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[\gamma'_{\boldsymbol{\eta}}(t) \left\| \boldsymbol{\epsilon} - \hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t) \right\|^2_2 \right] \label{eq: ct_diff_loss}
+    \\[5pt] & = \mathbb{E}_{q(\mathbf{z}_0 \mid \mathbf{x})}\left[\log p(\mathbf{x} \mid \mathbf{z}_0) \right] - D_{\mathrm{KL}}\left( q(\mathbf{z}_1 \mid \mathbf{x}) \parallel p(\mathbf{z}_1) \right) - \mathrm{VLB}(\mathbf{x})
+    \\[5pt] & = - \mathrm{VLB}(\mathbf{x}) + c, 
+\end{align}
+%
+where $c \approx 0 $ is constant with respect to the model parameters of $\hat{\boldsymbol{\epsilon}}_{\boldsymbol{\theta}}(\mathbf{z}_t;t)$.
+%
+\subsubsection{Invariance to the Noise Schedule}
+\label{subsubsec: Invariance to the Noise Schedule}
+%
+An important result established that the continuous-time VLB is invariant to the noise schedule of the forward diffusion process~\citep{kingma2021variational}. To explain this result, we begin by performing a change of variables; i.e. we transform the integral w.r.t time $t$ in the diffusion loss (Equation~\ref{eq: t_int}) into an integral w.r.t the signal-to-noise ratio. Since the signal-to-noise ratio function $\mathrm{SNR}(t)= \exp(-\gamma_{\boldsymbol{\eta}}(t))$ is \textit{monotonic}, it is invertible ($\mathrm{SNR}(t)$ is entirely non-increasing in time $t$ meaning: $\mathrm{SNR}(t) < \mathrm{SNR}(s)$, for any $t>s$; ref. Section~\ref{subsubsec: Noise Schedule}). Using this fact, we can re-express our loss in terms of a new variable $v \equiv \mathrm{SNR}(t)$, such that time $t$ is instead given by $t = \mathrm{SNR}^{-1}(v)$. Let $\mathbf{z}_v = \alpha_v \mathbf{x} + \sigma_v \boldsymbol{\epsilon}$ denote the latent variable $\mathbf{z}_v$ whose noise-schedule functions $\alpha_v$ and $\sigma_v$ correspond to $\alpha_t$ and $\sigma_t$ evaluated at $t = \mathrm{SNR}^{-1}(v)$. 
+
+By applying the \textit{integration by substitution} formula 
+% (a.k.a. the \textit{reverse chain rule} or \textit{change of variables}): 
+\begin{align}
+    \int_a^b f(g(t)) \cdot g'(t) \mathop{\mathrm{d} t} = \int_{g(a)}^{g(b)} f(v) \mathop{\mathrm{d} v},
+\end{align}
+we can express the diffusion loss in terms of our new variable $v$ as follows:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I}),t \sim \mathcal{U}(0,1)}\left[\mathrm{SNR}'(t)\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_t;t\right) \right\|^2_2 \right]
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \sigma_t\left(\mathbf{x}\sqrt{\mathrm{SNR}(t)} + \boldsymbol{\epsilon}\right) ;t\right) \right\|^2_2 \cdot \mathrm{SNR}'(t)\mathop{\mathrm{d}t}\right] 
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{\mathrm{SNR}(0)}^{\mathrm{SNR}(1)}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_v;v\right) \right\|^2_2 \mathop{\mathrm{d}v}\right] \customtag{$\mathrm{d}v = \mathrm{SNR}'(t) \mathop{\mathrm{d}t}$}
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{\mathrm{SNR}(1)}^{\mathrm{SNR}(0)}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_v;v\right) \right\|^2_2 \mathop{\mathrm{d}v}\right] \customtag{swap limits}
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_{\mathrm{SNR}_{\mathrm{min}}}^{\mathrm{SNR}_{\mathrm{max}}}\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_v;v\right) \right\|^2_2 \mathop{\mathrm{d}v}\right], \label{eq:snrminmax}
+\end{align}
+%
+where $\mathrm{SNR}_{\mathrm{max}} = \mathrm{SNR}(0)$ denotes the \textit{highest} signal-to-noise ratio at time $t=0$ resulting in the least noisy latent $\mathbf{z}_0$ at the start of the diffusion process (i.e. essentially the same as $\mathbf{x}$). Conversely, $\mathrm{SNR}_{\mathrm{min}} = \mathrm{SNR}(1)$ denotes the \textit{lowest} signal-to-noise ratio resulting in the noisiest latent $\mathbf{z}_1$ at time $t=1$.
+
+The above shows that the diffusion loss is determined by the endpoints $\mathrm{SNR}_{\mathrm{min}}$ and $\mathrm{SNR}_{\mathrm{max}}$, and is invariant to the shape of $\mathrm{SNR}(t)$ between $t=0$ and $t=1$. More precisely, the \textit{noise schedule} function $\exp(-\gamma_{\boldsymbol{\eta}}(t))$ which maps the time variable $t \in [0,1]$ to the signal-to-noise ratio $\mathrm{SNR}(t)$ does not influence the diffusion loss integral in Equation~\ref{eq:snrminmax}, except for at its endpoints $\mathrm{SNR}_{\mathrm{max}}$ and $\mathrm{SNR}_{\mathrm{min}}$. Therefore, given $v$, the shape of the noise schedule function $\exp(-\gamma_{\boldsymbol{\eta}}(t))$ does not affect the diffusion loss.
+
+Another way to understand the above result is by realizing that to compute the diffusion loss integral, it suffices to evaluate the antiderivative $F$ of the squared-error term at the endpoints $\mathrm{SNR}_{\mathrm{min}}$ and $\mathrm{SNR}_{\mathrm{max}}$:
+%
+\begin{align}
+    \mathcal{L}_\infty(\mathbf{x}) & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1\left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \sigma_t\left(\mathbf{x}\sqrt{\mathrm{SNR}(t)} + \boldsymbol{\epsilon}\right) ;t\right) \right\|^2_2 \cdot \mathrm{SNR}'(t)\mathop{\mathrm{d}t}\right] 
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1 F'(\mathrm{SNR}(t)) \cdot \mathrm{SNR}'(t)\mathop{\mathrm{d}t} \right] 
+    \\[5pt] & = -\frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[\int_0^1 (F \circ \mathrm{SNR})' (t) \mathop{\mathrm{d}t} \right] 
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[ -\left(F(\mathrm{SNR}(1)) - F(\mathrm{SNR}(0))\right) \right]
+    \\[5pt] & = \frac{1} {2}\mathbb{E}_{\boldsymbol{\epsilon} \sim \mathcal{N}(0,\mathbf{I})}\left[ F(\mathrm{SNR}_\mathrm{max}) - F(\mathrm{SNR}_\mathrm{min}) \right],
+\end{align}
+%
+since every continuous function has an antiderivative. Furthermore, there are infinitely many antiderivaties of the mean-square-error term, each of which, $G$, differs from $F$ by a only constant $c$:
+%
+\begin{align}
+    G(v) \coloneqq \int \left\| \mathbf{x} - \hat{\mathbf{x}}_{\boldsymbol{\theta}}\left( \mathbf{z}_v;v\right) \right\|^2_2 \mathop{\mathrm{d}v} = F(v) + c,
+\end{align}
+%
+for all signal-to-noise ratio functions $v \equiv \mathrm{SNR}(t)$.
+
+\paragraph{Diffusion Specifications.} \cite{kingma2021variational} elaborate on the equivalence of diffusion noise-schedule specifications using the following straightforward example. Firstly, the change of variables we used implies that $\sigma_v$ is given by:
+%
+\begin{align}
+    v = \frac{\alpha^2_v}{\sigma^2_v} &\implies \sqrt{v} = \frac{\alpha_v}{\sigma_v} \implies \sigma_v = \frac{\alpha_v}{\sqrt{v}},
+\end{align}
+%
+therefore, $\mathbf{z}_v$ can be equivalently expressed as
+%
+\begin{align}
+    \mathbf{z}_v & = \alpha_v \mathbf{x} + \sigma_v \boldsymbol{\epsilon} 
+    % \customtag{by definition}
+    % \\[5pt] & 
+    = \alpha_v \mathbf{x} + \frac{\alpha_v}{\sqrt{v}} \boldsymbol{\epsilon} 
+    % \customtag{substituting $\sigma_v$}
+    % \\[2pt] & 
+    = \alpha_v \left( \mathbf{x} + \frac{\boldsymbol{\epsilon}}{\sqrt{v}}\right), 
+    % \customtag{factor out $\alpha_v$} 
+    \label{eq: equivv}
+\end{align}
+%
+which holds for any diffusion specification (forward process) by definition.
+
+Now, consider two distinct diffusion specifications denoted as $\left\{\alpha^A_v, \sigma^A_v, \tilde{\mathbf{x}}^A_{\boldsymbol{\theta}}\right\}$ and $\left\{\alpha^B_v, \sigma^B_v, \tilde{\mathbf{x}}^B_{\boldsymbol{\theta}}\right\}$. Due to Equation~\ref{eq: equivv}, any two diffusion specifications produce equivalent latents, up to element-wise rescaling:
+%
+\begin{align}
+    \mathbf{z}^A_v &= \frac{\alpha_v^A}{\alpha_v^B} \mathbf{z}^B_v
+    \\[5pt] \alpha^A_v \left( \mathbf{x} + \frac{\boldsymbol{\epsilon}}{\sqrt{v}}\right) &= \frac{\alpha_v^A}{\alpha_v^B} \alpha^B_v \left( \mathbf{x} + \frac{\boldsymbol{\epsilon}}{\sqrt{v}}\right).
+\end{align}
+%
+This implies that we can denoise from any latent $\mathbf{z}^B_v$ using a model $\tilde{\mathbf{x}}_{\boldsymbol{\theta}}^A$ trained under a different noise specification, by trivially rescaling the latent $\mathbf{z}^B_v$ such that it'd be equivalent to denoising from $\mathbf{z}^A_v$:
+%
+\begin{align}
+    \tilde{\mathbf{x}}_{\boldsymbol{\theta}}^B\left(\mathbf{z}^B_v, v \right) \equiv \tilde{\mathbf{x}}_{\boldsymbol{\theta}}^A\left(\frac{\alpha_v^A}{\alpha_v^B} \mathbf{z}^B_v, v \right).
+\end{align}
+%
+Furthermore, when two diffusion specifications have equal $\mathrm{SNR}_{\mathrm{min}}$ and $\mathrm{SNR}_{\mathrm{max}}$, then the marginal distributions $p^A(\mathbf{x})$ and $p^B(\mathbf{x})$ defined by the two generative models are equal:
+%
+\begin{align}
+    \tilde{\mathbf{x}}_{\boldsymbol{\theta}}^B\left(\mathbf{z}^B_v, v \right) \equiv \tilde{\mathbf{x}}_{\boldsymbol{\theta}}^A\left(\frac{\alpha_v^A}{\alpha_v^B} \mathbf{z}^B_v, v \right) \implies p^A(\mathbf{x}) = p^B(\mathbf{x}),
+\end{align}
+%
+and both specifications yield identical diffusion loss in continuous time: $\mathcal{L}^A_\infty(\mathbf{x}) = \mathcal{L}^B_\infty(\mathbf{x})$, due to Equation~\ref{eq:snrminmax}. Importantly, this does \textit{not} mean that training under different noise specifications will result in the same model. To be clear, the $\tilde{\mathbf{x}}_{\boldsymbol{\theta}}^B$ model is fully determined by the $\tilde{\mathbf{x}}_{\boldsymbol{\theta}}^A$ model and the rescaling operation $\alpha_v^A/\alpha_v^B$. Furthermore, this invariance to the noise schedule does not hold for the Monte Carlo estimator of the diffusion loss, as the noise schedule affects the \textit{variance} of the estimator and therefore affects optimization efficiency as explained in subsequent sections.
