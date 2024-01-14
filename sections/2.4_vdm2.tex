@@ -183,7 +183,7 @@ thereby ensuring that the magnitude of the loss (Equation~\ref{eq: is_loss}) is 
 \subsubsection{ELBO with Data Augmentation}
 \label{subsubsec: elbo with data aug}
 %
-In this section, we dissect the main result presented by~\cite{kingma2023understanding}; that when the weighting function of the diffusion loss is monotonic, the resulting objective is equivalent to the ELBO under simple data augmentation using Gaussian additive noise. We provide an instructive derivation of this result, discuss its implications, and present an extension to the setting of non-monotonic weighting functions.
+In this section, we dissect the main result presented by~\cite{kingma2023understanding}; that when the weighting function of the diffusion loss is monotonic, the resulting objective is equivalent to the ELBO under simple data augmentation using Gaussian additive noise. We provide an instructive derivation of this result, discuss its implications, and discuss an extension to the setting of non-monotonic weighting functions.
 
 The general goal is to inspect the behaviour of the weighted diffusion objective across time $t$, and manipulate the expression such that we end up with an expectation under a valid probability distribution specified by the weighting function $w(\lambda)$. This then allows us to examine the integrand and reveal that it corresponds to the expected negative ELBO of noise-perturbed data.
 
