@@ -15,7 +15,7 @@ The generative process is straightforward: (i) sample a latent variable from a p
 % Judicious choices for the parametric form of these distributions depend on the data domain, e.g. Gaussian for continuous variables.
 
 % Inference in Bayesian models amounts to computing the posterior over the latent variables $p(\mathbf{z} \mid \mathbf{x}) = p(\mathbf{x}, \mathbf{z}) / \int p(\mathbf{x}, \mathbf{z}) \mathop{\mathrm{d}\mathbf{z}}$. 
-For complicated non-linear likelihood functions where $p(\mathbf{x} \mid \mathbf{z})$ is parameterized by deep neural network, integrating out the latent variable $\mathbf{z}$ to compute $p(\mathbf{x})$ has no analytic solution, so we must rely on approximations. A straightforward Monte Carlo approximation of $p(\mathbf{x})$ is certainly possible: 
+For complicated non-linear likelihood functions where $p(\mathbf{x} \mid \mathbf{z})$ is parameterized by a deep neural network, integrating out the latent variable $\mathbf{z}$ to compute $p(\mathbf{x})$ has no analytic solution, so we must rely on approximations. A straightforward Monte Carlo approximation of $p(\mathbf{x})$ is certainly possible: 
 %
 \begin{align}
 &p(\mathbf{x}) = \mathbb{E}_{\mathbf{z} \sim p(\mathbf{z})} \left[p(\mathbf{x} \mid \mathbf{z})\right] \approx
